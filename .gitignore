@@ -1,0 +1,38 @@
+.venv*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+*.egg-info/
+build/
+dist/
+runs/
+
+# Generated data, reports and unpublished research stay local.
+/reports/
+/results_10k.csv
+*.npz
+*.npy
+*.parquet
+*.jsonl
+/analysis*.json
+/analysis*.csv
+/comparison.csv
+/scenario_index.csv
+/REPORT.html
+/REPORT.md
+
+# Local research records and assistant handoff notes.
+/AGENTS.md
+/EVOLUTION_LAB_HANDOFF.md
+/CODEX_START_PROMPT.md
+/AUDIT.md
+/READINESS.md
+/VALIDATION.md
+
+# Local credentials and machine settings.
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/

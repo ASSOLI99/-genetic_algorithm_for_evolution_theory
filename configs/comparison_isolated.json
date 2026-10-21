@@ -1,0 +1,25 @@
+{
+  "name": "isolated_strategy_controls_v02",
+  "experiment_kind": "isolated",
+  "master_seed": 20261020,
+  "replicates": 8,
+  "base": {
+    "model": "demographic",
+    "steps": 80,
+    "checkpoint_every": 40,
+    "compatibility_scope": "within_strategy"
+  },
+  "grid": {
+    "initial_counts": [
+      [224, 0, 0, 0, 0, 0, 0],
+      [0, 224, 0, 0, 0, 0, 0],
+      [0, 0, 224, 0, 0, 0, 0],
+      [0, 0, 0, 224, 0, 0, 0],
+      [0, 0, 0, 0, 224, 0, 0],
+      [0, 0, 0, 0, 0, 224, 0],
+      [0, 0, 0, 0, 0, 0, 224]
+    ],
+    "environment": ["static", "periodic", "autocorrelated"],
+    "multiparent_mechanism": ["locus_mosaic", "chromosome_partition"]
+  }
+}

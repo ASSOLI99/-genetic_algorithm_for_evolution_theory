@@ -1,0 +1,4 @@
+{
+  "reproduction": ["clone", "two_parent"],
+  "recombination_rate": [0.0, 0.1]
+}

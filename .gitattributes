@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Historical source integrity checks require the original bytes on every OS.
+/evolution_lab_verified.py -text
+/test_evolution_lab.py -text

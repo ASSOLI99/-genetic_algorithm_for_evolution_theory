@@ -1,0 +1,14 @@
+{
+  "reproduction": "clone",
+  "population_size": 200,
+  "generations": 50,
+  "chromosome_lengths": [8, 8],
+  "seed": 2026,
+  "initial_frequency": 0.5,
+  "mutation_rate": 0.0,
+  "recombination_rate": 0.01,
+  "selection_coefficient": 0.0,
+  "dominance": 0.5,
+  "log_every": 1,
+  "checkpoint_every": 10
+}

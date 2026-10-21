@@ -1,0 +1,18 @@
+{
+  "name": "readiness_smoke_v02_not_scientific_results",
+  "master_seed": 89102026,
+  "replicates": 2,
+  "base": {
+    "model": "demographic",
+    "steps": 30,
+    "checkpoint_every": 15,
+    "environment": "autocorrelated",
+    "parasite": "tracking",
+    "mating_cost": 0.2,
+    "extra_parent_cost": 0.04
+  },
+  "grid": {
+    "multiparent_mechanism": ["locus_mosaic", "chromosome_partition"],
+    "compatibility_scope": ["within_strategy", "all_mixing"]
+  }
+}

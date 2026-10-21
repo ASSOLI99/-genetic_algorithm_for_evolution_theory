@@ -1,0 +1,18 @@
+{
+  "name": "established_strategies_exploratory_v02",
+  "master_seed": 20261020,
+  "replicates": 8,
+  "base": {
+    "model": "demographic",
+    "steps": 80,
+    "checkpoint_every": 40
+  },
+  "grid": {
+    "mating_cost": [0.0, 0.2],
+    "extra_parent_cost": [0.0, 0.04],
+    "environment": ["static", "periodic", "autocorrelated"],
+    "parasite": ["none", "fixed", "tracking"],
+    "multiparent_mechanism": ["locus_mosaic", "chromosome_partition"],
+    "compatibility_scope": ["within_strategy", "all_mixing"]
+  }
+}

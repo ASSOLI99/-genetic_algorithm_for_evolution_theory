@@ -1,0 +1,71 @@
+{
+  "model": "demographic",
+  "seed": 20261020,
+  "steps": 100,
+  "initial_counts": [
+    32,
+    32,
+    32,
+    32,
+    32,
+    32,
+    32
+  ],
+  "capacity": 336,
+  "chromosome_lengths": [
+    4,
+    4,
+    4,
+    4
+  ],
+  "initial_frequency": 0.5,
+  "maturity_age": 2,
+  "max_age": 16,
+  "senescence_age": 8,
+  "senescence_rate": 0.06,
+  "survival_probability": 0.85,
+  "fecundity": 0.65,
+  "selection_coefficient": 0.04,
+  "dominance": 0.5,
+  "mutation_rate": 0.001,
+  "recombination_rate": 0.05,
+  "mating_cost": 0.0,
+  "extra_parent_cost": 0.0,
+  "encounter_probability": 1.0,
+  "compatibility_scope": "within_strategy",
+  "compatibility_matrix": [
+    [
+      true,
+      true
+    ],
+    [
+      true,
+      true
+    ]
+  ],
+  "multiparent_mechanism": "locus_mosaic",
+  "facultative_probability": 0.1,
+  "modifier_mutation_rate": 0.001,
+  "modifier_step": 0.05,
+  "period": 10,
+  "stress_threshold": 0.75,
+  "facultative_fallback": true,
+  "environment": "static",
+  "environment_period": 20,
+  "environment_flip_rate": 0.03,
+  "seasonal_amplitude": 0.25,
+  "parasite": "none",
+  "parasite_strength": 0.15,
+  "parasite_period": 5,
+  "parasite_noise": 0.05,
+  "resource_capacity": 600.0,
+  "initial_resources": 600.0,
+  "resource_renewal": 150.0,
+  "maintenance_cost": 0.25,
+  "offspring_resource_cost": 1.0,
+  "log_every": 5,
+  "checkpoint_every": 25,
+  "establishment_size": 48,
+  "record_parentage": true,
+  "max_logged_births": 100000
+}

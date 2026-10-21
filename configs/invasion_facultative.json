@@ -1,0 +1,20 @@
+{
+  "name": "introduced_facultative_modifier_v02",
+  "experiment_kind": "introduced_modifier",
+  "introduced_strategy": "facultative",
+  "master_seed": 908102026,
+  "replicates": 16,
+  "base": {
+    "model": "demographic",
+    "steps": 200,
+    "initial_counts": [216, 0, 8, 0, 0, 0, 0],
+    "establishment_size": 48,
+    "facultative_probability": 0.1,
+    "modifier_mutation_rate": 0.001,
+    "checkpoint_every": 40
+  },
+  "grid": {
+    "mating_cost": [0.0, 0.2],
+    "environment": ["static", "autocorrelated"]
+  }
+}

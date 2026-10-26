@@ -58,6 +58,7 @@ class Settings:
     seed: int = 20261026
     environments: tuple = ('static', 'periodic', 'autocorrelated')
     comparison_mode: str = 'competition'
+    competition_strategies: tuple = STRATEGIES
     initial_population: int | None = None
     resource_capacity: float | None = None
     initial_resources: float | None = None
@@ -89,7 +90,11 @@ class Settings:
             raise SessionError('invalid_seed', 'البذرة يجب أن تكون عددًا صحيحًا من 0 إلى 2147483647.')
         if cfg.comparison_mode not in ('competition', 'isolated'):
             raise SessionError('invalid_mode', 'اختر منافسة مشتركة أو عوالم منفصلة.')
-        maximum_initial = cfg.capacity if cfg.comparison_mode == 'isolated' else cfg.capacity//7
+        selected = cfg.competition_strategies
+        if not isinstance(selected, (tuple, list)) or not selected or len(selected) > len(STRATEGIES) or any(type(s) is not str or s not in STRATEGIES for s in selected) or len(set(selected)) != len(selected):
+            raise SessionError('invalid_strategies', 'اختر طريقة تكاثر واحدة على الأقل دون تكرار أو أسماء غير معروفة.')
+        cfg = replace(cfg, competition_strategies=tuple(s for s in STRATEGIES if s in selected))
+        maximum_initial = cfg.capacity if cfg.comparison_mode == 'isolated' else cfg.capacity//len(cfg.active_strategies)
         if cfg.initial_population is not None and (type(cfg.initial_population) is not int or not 1 <= cfg.initial_population <= maximum_initial):
             raise SessionError('invalid_initial', f'عدد البداية لكل طريقة يجب أن يكون بين 1 و{maximum_initial}.')
         if cfg.comparison_mode == 'isolated' and cfg.compatibility_scope != 'within_strategy':
@@ -136,6 +141,10 @@ class Settings:
     def starting_count(self):
         return self.initial_population if self.initial_population is not None else max(8, self.capacity//(7*3)*2)
 
+    @property
+    def active_strategies(self):
+        return STRATEGIES if self.comparison_mode == 'isolated' else self.competition_strategies
+
     def resource_budget(self):
         scale = self.capacity/336
         cap = self.resource_capacity if self.resource_capacity is not None else 600*scale
@@ -148,7 +157,7 @@ class Settings:
         for environment in self.environments:
             programs = range(7) if self.comparison_mode == 'isolated' else (None,)
             for program in programs:
-                initial = tuple(self.starting_count if program is None or i == program else 0 for i in range(7))
+                initial = tuple(self.starting_count if (program is None and name in self.active_strategies) or i == program else 0 for i, name in enumerate(STRATEGIES))
                 name = environment if program is None else environment+'__'+STRATEGIES[program]
                 result[name] = EcoConfig(seed=self.seed, steps=self.steps, capacity=self.capacity,
                     initial_counts=initial, environment=environment, mutation_rate=self.mutation_rate,
@@ -161,13 +170,15 @@ class Settings:
         return result
 
     def to_dict(self):
-        return {name: list(value) if name == 'environments' else value for name, value in self.__dict__.items()}
+        return {name: list(value) if name in ('environments', 'competition_strategies') else value for name, value in self.__dict__.items()}
 
     def estimate(self):
         configs = self.configs()
         work = self.steps*self.capacity*len(configs)
         return {'settings': self.to_dict(), 'actual_steps': self.steps, 'worlds': len(configs),
                 'initial_per_strategy': self.starting_count,
+                'active_strategies': list(self.active_strategies),
+                'participating_strategy_count': len(self.active_strategies),
                 'total_initial_population': sum(sum(c.initial_counts) for c in configs.values()),
                 'resource_budget_per_world': self.resource_budget(),
                 'total_initial_resources': len(configs)*self.resource_budget()['initial_resources'],
@@ -483,7 +494,7 @@ class LabSession:
             destination.mkdir()
             save_checkpoint(destination/'checkpoint.npz', state)
             summaries[name] = write_outputs(destination, state, {'provenance': provenance(), 'interactive': True})
-        manifest = {'schema': 'interactive-3', 'settings': self.settings.to_dict(),
+        manifest = {'schema': 'interactive-4', 'settings': self.settings.to_dict(),
             'world_layout': {name: {'environment': state.config.environment, 'initial_counts': list(state.config.initial_counts),
                                    'capacity': state.config.capacity, 'resources': {k: getattr(state.config,k) for k in ('initial_resources','resource_capacity','resource_renewal')}} for name,state in self.worlds.items()},
             'clock': 'Scenario display clock; not empirically calibrated biological years',
@@ -542,6 +553,7 @@ class LabSession:
             'table{border-collapse:collapse;width:100%}td,th{padding:10px;border:1px solid #ccd6df}th{background:#eef4f7}</style>'
             '<h1>Evolution Lab — سجل تجربة تفاعلية</h1>'
             f'<p>تصميم التجربة: {"عوالم منفصلة" if self.settings.comparison_mode == "isolated" else "منافسة مشتركة"}؛ العوالم: {len(self.worlds)}.</p>'
+            f'<p>الطرق المشاركة من البداية: {"، ".join(LABELS[STRATEGIES.index(s)] for s in self.settings.active_strategies)}. الطرق المستثناة لا تُنشأ ولا تُحتسب كمنقرضة؛ لا يُوزّع أفرادها على الباقين، وتبقى ميزانية الغذاء والسعة حسب الإعدادات.</p>'
             f'<p>التحديثات المنفذة: {self.tick} من {self.settings.steps}؛ زمن السيناريو المعروض: {self.settings.million_years_at(self.tick):g} مليون سنة.</p>'
             '<p>الزمن افتراضي وغير معاير بيولوجيًا. هذه تجربة واحدة بتدخلات يدوية مسجلة؛ لا تمثل تكرارات مستقلة أو دليل تفوق إحصائي. '
             'الميكانيكيات ذات 4/8 مساهمين افتراضية. النقاط في الواجهة عينة من أفراد المحاكاة وليست خريطة مكانية أو نموذج هجرة.</p>'
@@ -558,11 +570,11 @@ class LabSession:
 
 def replay_session(path):
     manifest = json.loads(Path(path).read_text(encoding='utf-8'))
-    if manifest.get('schema') not in ('interactive-1', 'interactive-2', 'interactive-3') or manifest.get('signature') != signature():
+    if manifest.get('schema') not in ('interactive-1', 'interactive-2', 'interactive-3', 'interactive-4') or manifest.get('signature') != signature():
         raise ValueError('Interactive replay source/runtime signature mismatch')
     session = LabSession(Path(path).parent/'unused_replay_output')
     session.configure(manifest['settings'], acknowledge_resources=True)
-    if manifest['schema'] in ('interactive-2', 'interactive-3'):
+    if manifest['schema'] in ('interactive-2', 'interactive-3', 'interactive-4'):
         layout = {name: {'environment': state.config.environment, 'initial_counts': list(state.config.initial_counts),
                          'capacity': state.config.capacity, 'resources': {k: getattr(state.config,k) for k in ('initial_resources','resource_capacity','resource_renewal')}} for name,state in session.worlds.items()}
         if layout != manifest.get('world_layout'):

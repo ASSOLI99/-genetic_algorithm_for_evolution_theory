@@ -1,6 +1,9 @@
 'use strict';
 const PROGRAMS = ['clone','two_parent','facultative','periodic','stress','four_parent','eight_parent'];
 function isolated(session){return session?.settings?.comparison_mode==='isolated';}
+function activePrograms(values){
+  return values?.comparison_mode==='isolated'?PROGRAMS:PROGRAMS.filter(program=>(values?.competition_strategies??PROGRAMS).includes(program));
+}
 function comparisonRows(session,environment){
   const worlds=(session?.worlds||[]).filter(world=>(world.environment||world.id)===environment);
   return PROGRAMS.map((program,index)=>{
@@ -9,7 +12,7 @@ function comparisonRows(session,environment){
   });
 }
 function comparisonSeries(session,history,environment,mode){
-  if(mode==='population'||isolated(session))return comparisonRows(session,environment).map(({world,strategy_index})=>({
+  if(mode==='population'||isolated(session))return comparisonRows(session,environment).filter(({row})=>row?.initial_count!==0).map(({world,strategy_index})=>({
     index:strategy_index,values:history.map(point=>mode==='population'?(point.populations[world?.id]?.[strategy_index]??0):(point.resources[world?.id]??0))
   }));
   return ['static','periodic','autocorrelated'].map((environment,index)=>({index,values:history.map(point=>point.resources[environment]??0)}));
@@ -18,12 +21,12 @@ function comparisonSeries(session,history,environment,mode){
 // A living group is right-censored; the current time is not an extinction time.
 function survivalSummary(row, session) {
   if (!row || !session?.settings) return null;
-  const event = Number.isInteger(row.extinction_tick);
+  const event = row.initial_count!==0 && Number.isInteger(row.extinction_tick);
   const removed = event && (row.extinction_cause === 'experimental_removal' || (row.cumulative?.experimental_removals ?? 0) > 0);
-  const observed = event ? row.extinction_tick : row.population > 0 ? session.tick : null;
+  const observed = row.initial_count===0 ? null : event ? row.extinction_tick : row.population > 0 ? session.tick : null;
   const yearsAt = tick => tick === null ? null : tick * Number(session.settings.duration_million_years) / session.settings.steps;
   return {
-    status: removed ? 'removed' : event ? 'extinct' : row.population === 0 ? 'unknown' : ['running','paused'].includes(session.status) ? 'ongoing' : 'censored',
+    status: row.initial_count===0 ? 'excluded' : removed ? 'removed' : event ? 'extinct' : row.population === 0 ? 'unknown' : ['running','paused'].includes(session.status) ? 'ongoing' : 'censored',
     event_observed: event,
     loss_cause: event ? (removed ? 'experimental_removal' : 'population_dynamics') : null,
     natural_extinction_observed: event && !removed,
@@ -57,7 +60,7 @@ function removalMarkers(session,environment,mode){
   return (session?.actions||[]).filter(event=>event.type==='remove_program'&&event.execution_tick<=session.tick&&
     (mode==='resources'||event.target==='all'||event.target===environment));
 }
-if (typeof module !== 'undefined' && module.exports) module.exports = {survivalSummary, survivalRecords, survivalCsv, comparisonRows, comparisonSeries, removalSummary, removalMarkers};
+if (typeof module !== 'undefined' && module.exports) module.exports = {survivalSummary, survivalRecords, survivalCsv, comparisonRows, comparisonSeries, removalSummary, removalMarkers, activePrograms};
 if (typeof document !== 'undefined') {
 const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name="evolution-token"]').content;
@@ -92,11 +95,20 @@ async function api(path, body) {
 function settings() {
   return {duration_million_years:$('duration').value,steps:Number($('steps').value),capacity:Number($('capacity').value),
     comparison_mode:$('comparisonMode').value,initial_population:Number($('initialPopulation').value),
+    competition_strategies:$('comparisonMode').value==='isolated'?PROGRAMS:checkedPrograms(),
     resource_capacity:Number($('resourceCapacity').value),initial_resources:Number($('initialResources').value),resource_renewal:Number($('resourceRenewal').value),
     seed:Number($('seed').value),mutation_rate:Number($('mutation').value),mating_cost:Number($('matingCost').value),
     extra_parent_cost:Number($('partnerCost').value),speed:Number($('speed').value),
     recombination_rate:Number($('recombination').value),selection_coefficient:Number($('selection').value),
     compatibility_scope:$('compatibility').value,multiparent_mechanism:$('inheritance').value,parasite:$('parasite').value};
+}
+function checkedPrograms(){return [...document.querySelectorAll('[data-program-check]:checked')].map(box=>box.value);}
+function renderSelectionControls(){
+  const separate=$('comparisonMode').value==='isolated',live=state&&['running','paused'].includes(state.status),selected=checkedPrograms();
+  $('strategySelection').hidden=separate;$('strategySelection').disabled=Boolean(live)||separate;
+  $('strategySelection').classList.toggle('invalid',!selected.length&&!separate);
+  $('strategySelectionHint').textContent=selected.length?count.format(selected.length)+' طرق مشاركة. المستثناة لا تُنشأ، ولا يُوزّع أفرادها على الباقين.':'اختر طريقة تكاثر واحدة على الأقل حتى تبدأ التجربة.';
+  $('startButton').disabled=Boolean(live)||(!separate&&!selected.length);
 }
 function restoreSessionSettings(values) {
   const fields={duration:'duration_million_years',steps:'steps',capacity:'capacity',seed:'seed',mutation:'mutation_rate',
@@ -107,6 +119,7 @@ function restoreSessionSettings(values) {
     if(field.tagName==='SELECT'&&![...field.options].some(option=>option.value===value))field.add(new Option(value+' · إعداد الجلسة',value));
     field.value=value;
   }
+  if(values.comparison_mode!=='isolated')for(const box of document.querySelectorAll('[data-program-check]'))box.checked=activePrograms(values).includes(box.value);
   lastCapacity=Number(values.capacity);
   $('initialPopulation').value=values.initial_population??Math.max(8,Math.floor(lastCapacity/21)*2);
   $('resourceCapacity').value=values.resource_capacity??600*lastCapacity/336;
@@ -123,11 +136,13 @@ function updateSettingsHint() {
   const resolution = Number($('duration').value)/Number($('steps').value);
   if(Number($('duration').value)>=1&&Number($('disasterDuration').value)>Number($('duration').value))$('disasterDuration').value=$('duration').value;
   $('resolutionHint').textContent = 'كل تحديث يعرض '+fmt.format(resolution)+' مليون سنة افتراضية؛ الزمن غير معاير بيولوجيًا.';
-  const maxInitial=separate?Number($('capacity').value):Math.floor(Number($('capacity').value)/7);
+  const selected=checkedPrograms();
+  const maxInitial=separate?Number($('capacity').value):Math.floor(Number($('capacity').value)/Math.max(1,selected.length));
   $('initialPopulation').max=maxInitial;
   if(Number($('initialPopulation').value)>maxInitial)$('initialPopulation').value=maxInitial;
   const initial=Number($('initialPopulation').value);
-  $('comparisonHint').textContent=separate?'21 عالمًا مستقلًا: 7 لكل بيئة. نفس البداية والغذاء لكل عالم، وكل كارثة تطبّق على الجميع. الميزانية الكلية أكبر من المنافسة.':'الطرق السبع تتشارك الغذاء والسعة داخل كل بيئة. البداية الإجمالية لكل بيئة: '+count.format(initial*7)+' فردًا.';
+  $('comparisonHint').textContent=separate?'21 عالمًا مستقلًا: 7 لكل بيئة. نفس البداية والغذاء لكل عالم، وكل كارثة تطبّق على الجميع. الميزانية الكلية أكبر من المنافسة.':count.format(selected.length)+' طرق تتشارك الغذاء والسعة داخل كل بيئة. البداية الإجمالية لكل بيئة: '+count.format(initial*selected.length)+' فردًا. الغذاء والسعة حسب إعداداتك.';
+  renderSelectionControls();
   const live=state&&['running','paused'].includes(state.status);
   $('compatibility').disabled=live||separate;
   const globalEvents=live?isolated(state):separate;
@@ -140,6 +155,7 @@ function updateSettingsHint() {
   document.querySelectorAll('[data-duration]').forEach(b=>b.classList.toggle('selected',b.dataset.duration===$('duration').value));
 }
 for (const id of ['duration','steps','initialPopulation']) $(id).addEventListener('input',updateSettingsHint);
+for(const box of document.querySelectorAll('[data-program-check]'))box.onchange=updateSettingsHint;
 $('capacity').addEventListener('input',()=>{
   const capacity=Number($('capacity').value);
   for(const [id,factor] of [['resourceCapacity',600],['initialResources',600],['resourceRenewal',150]]){
@@ -164,11 +180,11 @@ $('startButton').onclick=async()=>{
     pendingSettings=settings();
     const estimate=await api('/api/estimate',pendingSettings);
     const items=[['مدة السيناريو',fmt.format(Number(pendingSettings.duration_million_years))+' M'],['تحديثات فعلية',count.format(estimate.actual_steps)],
-      ['العوالم',estimate.worlds],['البداية لكل طريقة / عالم',estimate.initial_per_strategy],
+      ['العوالم',estimate.worlds],['طرق مشاركة',estimate.participating_strategy_count],['البداية لكل طريقة / عالم',estimate.initial_per_strategy],
       ['غذاء البداية لكل عالم',estimate.resource_budget_per_world.initial_resources],['تجدد الغذاء لكل عالم',estimate.resource_budget_per_world.resource_renewal],
       ['سقف التحديثات الفردية',short.format(estimate.upper_individual_updates)],['صفوف سجل السكان',short.format(estimate.retained_ledger_rows)],['الحمل الاسترشادي',estimate.load]];
     $('estimateGrid').innerHTML=items.map(([label,value])=>`<div class="estimate-item"><small>${label}</small><strong>${value}</strong></div>`).join('');
-    $('mappingNotice').textContent=estimate.calendar_mapping+' كل طريقة تبدأ بـ'+estimate.initial_per_strategy+' فردًا. إجمالي البداية '+count.format(estimate.total_initial_population)+'، وإجمالي مخزون الغذاء '+count.format(estimate.total_initial_resources)+'. '+(pendingSettings.comparison_mode==='isolated'?'الموارد والسعة منفصلة لكل عالم؛ لا توجد منافسة بين طرق مختلفة. ':'الموارد والسعة مشتركة بين الطرق في كل بيئة. ')+'مدة السيناريو تغيّر مقياس العرض؛ الدقة هي عدد الحسابات الفعلية.';
+    $('mappingNotice').textContent=estimate.calendar_mapping+' الطرق المشاركة: '+estimate.active_strategies.map(program=>LABELS[PROGRAMS.indexOf(program)]).join('، ')+'. كل طريقة مختارة تبدأ بـ'+estimate.initial_per_strategy+' فردًا. إجمالي البداية '+count.format(estimate.total_initial_population)+'، وإجمالي مخزون الغذاء '+count.format(estimate.total_initial_resources)+'. '+(pendingSettings.comparison_mode==='isolated'?'الموارد والسعة منفصلة لكل عالم؛ لا توجد منافسة بين طرق مختلفة. ':'الموارد والسعة مشتركة بين الطرق المختارة؛ المستثناة لا تُنشأ ولا يُعاد توزيع أفرادها. ')+'مدة السيناريو تغيّر مقياس العرض؛ الدقة هي عدد الحسابات الفعلية.';
     $('resourceAck').checked=false; $('confirmStart').disabled=true; $('resourceDialog').showModal();
   } catch(error) {notify(error.message,true);}
 };
@@ -271,7 +287,7 @@ function render(){
   const alive=['running','paused'].includes(state.status);
   $('statusBadge').className='run-state '+state.status;
   $('statusBadge').innerHTML='<i></i>'+STATES[state.status];
-  $('startButton').disabled=alive;
+  renderSelectionControls();
   ['duration','steps','capacity','comparisonMode','initialPopulation','resourceCapacity','initialResources','resourceRenewal','mutation','matingCost','partnerCost','seed','recombination','selection','compatibility','inheritance','parasite'].forEach(id=>$(id).disabled=alive);
   $('compatibility').disabled=alive||$('comparisonMode').value==='isolated';
   $('target').disabled=alive?isolated(state):$('comparisonMode').value==='isolated';
@@ -333,6 +349,9 @@ function render(){
   renderRemoval();renderDetails();renderChart();renderLegend();
 }
 function renderRemoval(){
+  const programs=activePrograms(state?.settings);
+  for(const option of $('removalStrategy').options)option.hidden=option.disabled=!programs.includes(option.value);
+  if(!programs.includes($('removalStrategy').value))$('removalStrategy').value=programs[0]??'';
   const target=$('removalScope').value==='all'?'all':focus;
   const result=removalSummary(state,$('removalStrategy').value,target);
   $('removalHint').textContent=(target==='all'?'جميع البيئات المشتركة':ENV.find(e=>e.id===focus).label)+' · '+count.format(result.population)+' فردًا من الطريقة المختارة.';
@@ -354,6 +373,7 @@ function renderDetails(){
   }
   LABELS.forEach((label,i)=>{
     const row=observations[i].row;
+    $('strategyRows').children[i].hidden=row?.initial_count===0;
     const cells=$('strategyRows').children[i].children;
     cells[1].textContent=row?count.format(row.population):'—';
     cells[2].textContent=row?.gene_diversity==null?'—':row.gene_diversity.toFixed(3);
@@ -367,7 +387,7 @@ function renderDetails(){
 }
 function inspectStrategy(index){
   const {world,row:r}=comparisonRows(state,focus)[index];
-  if(!r){notify('ابدأ تجربة لعرض المقاييس الفعلية.');return;}
+  if(!r||r.initial_count===0){notify(r?'هذه الطريقة مستثناة من التجربة.':'ابدأ تجربة لعرض المقاييس الفعلية.');return;}
   activeProgram=index;$('strategyTitle').textContent=LABELS[index]+' · '+ENV.find(env=>env.id===focus).label;
   const survival=survivalSummary(r,state);
   const c=r.cumulative,items=[['حالة الصمود',survival.status==='removed'?'أُزيل بتدخلك':survival.status==='extinct'?'انقرض':survival.status==='ongoing'?'مستمر حتى الآن':survival.status==='censored'?'باقٍ عند نهاية الرصد':'توقيت غير مسجّل'],
@@ -384,7 +404,8 @@ function inspectStrategy(index){
   $('strategyDialog').showModal();
 }
 function renderLegend(){
-  const entries=chartMode==='population'||viewIsolated()?LABELS.map((label,i)=>({label,color:COLORS[i]})):ENV;
+  const programs=activePrograms(state?.settings);
+  const entries=chartMode==='population'||viewIsolated()?LABELS.flatMap((label,i)=>programs.includes(PROGRAMS[i])?[{label,color:COLORS[i]}]:[]):ENV;
   $('strategyLegend').innerHTML=entries.map(e=>`<span class="legend-item"><i style="background:${e.color}"></i>${e.label}</span>`).join('');
 }
 function fitCanvas(canvas){

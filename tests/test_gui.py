@@ -238,6 +238,24 @@ def test_http_removal_route_reserves_applies_and_exports_separate_cause(http_lab
     assert 'إزالة تجريبية' in request(http_lab,saved['report'])[1].decode('utf-8')
 
 
+def test_http_start_uses_checkbox_membership_in_model_and_estimate(http_lab):
+    settings={'steps':100,'capacity':168,'speed':1,'competition_strategies':['clone','two_parent']}
+    status,data=request(http_lab,'/api/estimate',settings)
+    assert status==200 and json.loads(data)['total_initial_population']==96
+    status,data=request(http_lab,'/api/start',{'settings':settings,'acknowledge_resources':True})
+    assert status==200
+    assert request(http_lab,'/api/control',{'action':'pause'})[0]==200
+    status,data=request(http_lab,'/api/state')
+    snapshot=json.loads(data)
+    assert snapshot['settings']['competition_strategies']==['clone','two_parent']
+    for world in snapshot['worlds']:
+        assert world['initial_population']==32
+        assert [r['initial_count'] for r in world['strategies']]==[16,16,0,0,0,0,0]
+        assert all(r['population']==0 and r['extinction_tick'] is None for r in world['strategies'][2:])
+    status,data=request(http_lab,'/api/estimate',{**settings,'competition_strategies':[]})
+    assert status==400 and json.loads(data)['error']=='invalid_strategies'
+
+
 def test_isolated_worlds_have_equal_budgets_and_paired_founders(tmp_path):
     lab=make_session(tmp_path,comparison_mode='isolated',initial_population=32,
                      resource_capacity=400,initial_resources=300,resource_renewal=40)
@@ -325,7 +343,7 @@ def test_isolated_export_replay_and_report_risk_sets(tmp_path):
     lab.advance_ticks(12)
     saved=lab.export();folder=Path(saved['directory'])
     manifest=json.loads((folder/'session.json').read_text())
-    assert manifest['schema']=='interactive-3' and len(manifest['world_layout'])==21
+    assert manifest['schema']=='interactive-4' and len(manifest['world_layout'])==21
     restored=replay_session(folder/'session.json')
     for name,state in lab.worlds.items():
         assert fingerprint(state)==fingerprint(restored.worlds[name])

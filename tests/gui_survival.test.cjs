@@ -2,7 +2,7 @@
 // No browser or frontend dependencies are needed for the survival contract.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {survivalSummary, survivalRecords, survivalCsv, comparisonRows, comparisonSeries, removalSummary, removalMarkers} = require('../src/evolution_lab_v2/web/app.js');
+const {survivalSummary, survivalRecords, survivalCsv, comparisonRows, comparisonSeries, removalSummary, removalMarkers, activePrograms} = require('../src/evolution_lab_v2/web/app.js');
 
 const session = (overrides={}) => ({status:'running',tick:500,
   settings:{duration_million_years:'100',steps:1000},...overrides});
@@ -143,4 +143,23 @@ test('chart removal markers use execution time, scope and only applied actions',
   assert.deepEqual(removalMarkers(current,'periodic','population').map(e=>e.execution_tick),[7]);
   assert.deepEqual(removalMarkers(current,'periodic','resources').map(e=>e.execution_tick),[5,7]);
   assert.deepEqual(removalMarkers(null,'static','population'),[]);
+});
+
+test('checkbox membership preserves all defaults and is scoped to shared competition',()=>{
+  assert.deepEqual(activePrograms({}),programs);
+  assert.deepEqual(activePrograms({competition_strategies:['stress','clone']}),['clone','stress']);
+  assert.deepEqual(activePrograms({competition_strategies:[]}),[]);
+  assert.deepEqual(activePrograms({comparison_mode:'isolated',competition_strategies:['clone']}),programs);
+});
+
+test('excluded programs never become false extinction observations or plotted competitors',()=>{
+  const current=session({settings:{duration_million_years:'100',steps:1000,competition_strategies:['clone','two_parent']},
+    worlds:[{id:'static',strategies:programs.map((strategy,i)=>row({strategy,initial_count:i<2?32:0,population:i<2?10:0,extinction_tick:null}))}]});
+  const history=[{populations:{static:[10,10,0,0,0,0,0]},resources:{static:100}}];
+  assert.deepEqual(comparisonSeries(current,history,'static','population').map(line=>line.index),[0,1]);
+  assert.equal(survivalRecords(current).length,2);
+  assert.ok(!survivalCsv(current).includes('"facultative"'));
+  const excluded=survivalSummary(current.worlds[0].strategies[2],current);
+  assert.equal(excluded.status,'excluded');assert.equal(excluded.event_observed,false);
+  assert.equal(excluded.observed_tick,null);assert.equal(excluded.extinction_tick,null);
 });

@@ -113,6 +113,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = {'ok': True}
             elif route == '/api/catastrophe':
                 result = lab.catastrophe(body)
+            elif route == '/api/remove-program':
+                result = lab.remove_program(body)
             elif route == '/api/export':
                 result = lab.export()
             else:

@@ -2,7 +2,7 @@
 // No browser or frontend dependencies are needed for the survival contract.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {survivalSummary, survivalRecords, survivalCsv, comparisonRows, comparisonSeries} = require('../src/evolution_lab_v2/web/app.js');
+const {survivalSummary, survivalRecords, survivalCsv, comparisonRows, comparisonSeries, removalSummary, removalMarkers} = require('../src/evolution_lab_v2/web/app.js');
 
 const session = (overrides={}) => ({status:'running',tick:500,
   settings:{duration_million_years:'100',steps:1000},...overrides});
@@ -105,4 +105,42 @@ test('shared competition retains its original seven population curves and three 
   assert.deepEqual(comparisonRows(current,'static').map(row=>row.row.population),[1,2,3,4,5,6,7]);
   assert.deepEqual(comparisonSeries(current,history,'static','population').map(line=>line.values[0]),[1,2,3,4,5,6,7]);
   assert.deepEqual(comparisonSeries(current,history,'static','resources').map(line=>line.values[0]),[10,20,30]);
+});
+
+test('intentional loss keeps its exact census but is not a natural extinction',()=>{
+  const removed=row({extinction_cause:'experimental_removal',cumulative:{experimental_removals:19}});
+  const result=survivalSummary(removed,session());
+  assert.equal(result.status,'removed');assert.equal(result.observed_tick,137);
+  assert.equal(result.event_observed,true);assert.equal(result.natural_extinction_observed,false);
+  assert.equal(result.loss_cause,'experimental_removal');assert.equal(result.experimental_removals,19);
+  assert.equal(survivalSummary(row(),session()).natural_extinction_observed,true);
+  const csv=survivalCsv(session({worlds:[{id:'static',strategies:[removed]}]}));
+  assert.ok(csv.includes('loss_cause,natural_extinction_observed,experimental_removals'));
+  assert.ok(csv.includes('"experimental_removal","false","19"'));
+});
+
+test('removal availability counts only the requested program and scope',()=>{
+  const current=session({worlds:[{id:'static',strategies:[row({population:9})]},
+    {id:'periodic',strategies:[row({population:11})]}]});
+  assert.deepEqual(removalSummary(current,'two_parent','static'),{population:9,reason:null,allowed:true});
+  assert.equal(removalSummary(current,'two_parent','all').population,20);
+  assert.equal(removalSummary(current,'clone','all').reason,'absent');
+  assert.equal(removalSummary({...current,status:'completed'},'two_parent','all').reason,'inactive');
+  assert.equal(removalSummary({...current,active:{}},'two_parent','all').reason,'catastrophe');
+  assert.equal(removalSummary({...current,pending_removal:{}},'two_parent','all').reason,'pending');
+  assert.equal(removalSummary(isolatedFixture(),'two_parent','all').reason,'isolated');
+  assert.equal(removalSummary({...current,status:'paused'},'two_parent','all').allowed,true);
+});
+
+test('chart removal markers use execution time, scope and only applied actions',()=>{
+  const current=session({tick:10,actions:[
+    {type:'catastrophe',tick:1},
+    {type:'remove_program',target:'static',execution_tick:5},
+    {type:'remove_program',target:'all',execution_tick:7},
+    {type:'remove_program',target:'periodic',execution_tick:11}
+  ]});
+  assert.deepEqual(removalMarkers(current,'static','population').map(e=>e.execution_tick),[5,7]);
+  assert.deepEqual(removalMarkers(current,'periodic','population').map(e=>e.execution_tick),[7]);
+  assert.deepEqual(removalMarkers(current,'periodic','resources').map(e=>e.execution_tick),[5,7]);
+  assert.deepEqual(removalMarkers(null,'static','population'),[]);
 });

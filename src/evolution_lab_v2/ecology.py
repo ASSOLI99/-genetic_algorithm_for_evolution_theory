@@ -15,7 +15,7 @@ COUNTERS = ("survival_deaths", "catastrophe_deaths", "maintenance_deaths", "atte
             "fallback_births", "raw_newborns", "funded_newborns", "resource_rejected",
             "capacity_adult_deaths", "capacity_newborn_deaths", "realized_newborns",
             "sexual_newborns", "mixed_cohort_newborns", "selected_parent_slots", "positive_contributor_slots",
-            "effort_spent", "offspring_resources")
+            "effort_spent", "offspring_resources", "experimental_removals")
 
 
 @dataclass
@@ -167,15 +167,29 @@ def intended_parents(state, breeders, scores):
     return needed
 
 
-def step(state):
+def step(state, remove_programs=()):
     cfg = state.config
     if state.tick >= cfg.steps:
         raise ValueError("Configured demographic horizon reached")
+    if not isinstance(remove_programs, (tuple, list)) or any(type(i) is not int or not 0 <= i < len(STRATEGIES) for i in remove_programs) or len(set(remove_programs)) != len(remove_programs):
+        raise ValueError("Removal programs must be distinct valid integer indexes")
     start_counts = counts(state)
     stats = {name: np.zeros(len(STRATEGIES), dtype=float) for name in COUNTERS}
 
     def tally(name, strategies, weights=None):
         stats[name] += np.bincount(strategies, weights=weights, minlength=len(STRATEGIES))
+
+    # An explicitly requested experimental treatment, before ordinary dynamics.
+    # No RNG draw, food refund or parameter change is introduced by removal.
+    if remove_programs:
+        removed = np.isin(state.strategy, remove_programs)
+        tally("experimental_removals", state.strategy[removed])
+        for program in remove_programs:
+            count = int(np.count_nonzero(state.strategy[removed] == program))
+            if count:
+                state.events.append({"tick": state.tick+1, "event": "experimental_removal",
+                                     "strategy": STRATEGIES[program], "removed_count": count})
+        subset(state, ~removed)
 
     # Host-responsive parasite dynamics, on a separate stream. No regime-dependent
     # calls to mortality/mating/environment RNGs.
@@ -352,7 +366,7 @@ def step(state):
     state.tick += 1
     end_counts = counts(state)
     for s, name in enumerate(STRATEGIES):
-        balance = start_counts[s]-stats["survival_deaths"][s]-stats["catastrophe_deaths"][s]-stats["maintenance_deaths"][s]-stats["capacity_adult_deaths"][s]+stats["realized_newborns"][s]
+        balance = start_counts[s]-stats["experimental_removals"][s]-stats["survival_deaths"][s]-stats["catastrophe_deaths"][s]-stats["maintenance_deaths"][s]-stats["capacity_adult_deaths"][s]+stats["realized_newborns"][s]
         if balance != end_counts[s]:
             raise ValueError("Population accounting violated")
         row = {"tick": state.tick, "strategy": name, "start": int(start_counts[s]), "end": int(end_counts[s])}

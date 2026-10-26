@@ -19,11 +19,15 @@ function comparisonSeries(session,history,environment,mode){
 function survivalSummary(row, session) {
   if (!row || !session?.settings) return null;
   const event = Number.isInteger(row.extinction_tick);
+  const removed = event && (row.extinction_cause === 'experimental_removal' || (row.cumulative?.experimental_removals ?? 0) > 0);
   const observed = event ? row.extinction_tick : row.population > 0 ? session.tick : null;
   const yearsAt = tick => tick === null ? null : tick * Number(session.settings.duration_million_years) / session.settings.steps;
   return {
-    status: event ? 'extinct' : row.population === 0 ? 'unknown' : ['running','paused'].includes(session.status) ? 'ongoing' : 'censored',
+    status: removed ? 'removed' : event ? 'extinct' : row.population === 0 ? 'unknown' : ['running','paused'].includes(session.status) ? 'ongoing' : 'censored',
     event_observed: event,
+    loss_cause: event ? (removed ? 'experimental_removal' : 'population_dynamics') : null,
+    natural_extinction_observed: event && !removed,
+    experimental_removals: row.cumulative?.experimental_removals ?? 0,
     observed_tick: observed,
     observed_million_years: yearsAt(observed),
     extinction_tick: event ? row.extinction_tick : null,
@@ -38,11 +42,22 @@ function survivalRecords(session) {
 }
 function survivalCsv(session) {
   const columns = ['environment','strategy','population','status','event_observed','observed_tick',
-    'observed_million_years','extinction_tick','extinction_million_years','clock','world'];
+    'observed_million_years','extinction_tick','extinction_million_years','clock','world','loss_cause','natural_extinction_observed','experimental_removals'];
   const cell = value => '"'+String(value ?? '').replaceAll('"','""')+'"';
   return '\uFEFF'+[columns.join(','), ...survivalRecords(session).map(row => columns.map(key => cell(row[key])).join(','))].join('\r\n')+'\r\n';
 }
-if (typeof module !== 'undefined' && module.exports) module.exports = {survivalSummary, survivalRecords, survivalCsv, comparisonRows, comparisonSeries};
+function removalSummary(session,program,target){
+  const worlds=(session?.worlds||[]).filter(world=>target==='all'||world.id===target);
+  const population=worlds.reduce((sum,world)=>sum+(world.strategies.find(row=>row.strategy===program)?.population??0),0);
+  const reason=isolated(session)?'isolated':!['running','paused'].includes(session?.status)?'inactive':
+    session.active?'catastrophe':session.pending_removal?'pending':population===0?'absent':null;
+  return {population,reason,allowed:reason===null};
+}
+function removalMarkers(session,environment,mode){
+  return (session?.actions||[]).filter(event=>event.type==='remove_program'&&event.execution_tick<=session.tick&&
+    (mode==='resources'||event.target==='all'||event.target===environment));
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = {survivalSummary, survivalRecords, survivalCsv, comparisonRows, comparisonSeries, removalSummary, removalMarkers};
 if (typeof document !== 'undefined') {
 const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name="evolution-token"]').content;
@@ -189,6 +204,14 @@ $('disasterButton').onclick=async()=>{
     await poll();
   } catch(error){notify(error.message,true);await poll();}
 };
+$('removalStrategy').onchange=$('removalScope').onchange=()=>renderRemoval();
+$('removeProgramButton').onclick=async()=>{
+  $('removeProgramButton').disabled=true;
+  try{
+    const event=await api('/api/remove-program',{strategy:$('removalStrategy').value,target:$('removalScope').value==='all'?'all':focus});
+    notify('جُدولت إزالة '+count.format(event.scheduled_count)+' فردًا عند التحديث '+event.execution_tick+(state?.status==='paused'?'؛ اضغط متابعة لتنفيذها.':'.'));
+  }catch(error){notify(error.message,true);}finally{await poll();}
+};
 $('exportButton').onclick=async()=>{
   if(exporting)return; exporting=true;$('exportButton').disabled=true;
   try {const saved=await api('/api/export',{});showExport(saved);notify('حُفظت الجينات والسجلات والتدخلات والحالة الحالية.');}
@@ -202,7 +225,7 @@ $('survivalExportButton').onclick=()=>{
   const url=URL.createObjectURL(new Blob([survivalCsv(state)],{type:'text/csv;charset=utf-8'}));
   const link=document.createElement('a');link.href=url;link.download='evolution-lab-survival.csv';
   link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-  notify('حُفظ جدول الصمود والانقراض للبيئات الثلاث؛ المستمرة مسجّلة دون حدث انقراض.');
+  notify('حُفظ جدول الصمود؛ يتضمن سبب فقد المجموعة وعداد الإزالة التجريبية.');
 };
 
 for(const env of ENV){
@@ -281,7 +304,7 @@ function render(){
     card.classList.toggle('affected',affected);card.classList.toggle('extinct',Boolean(world?.extinct));
     card.querySelector('.world-status').textContent=world?.extinct?'انقرض المجتمع':affected?'تحت أثر الكارثة':world?(alive?'قيد الرصد':'رصد مكتمل'):'بانتظار البداية';
   }
-  const ready=alive&&!state.active&&state.tick>=state.next_allowed_tick;
+  const ready=alive&&!state.active&&!state.pending_removal&&state.tick>=state.next_allowed_tick;
   $('disasterButton').disabled=!ready;
   $('activeDisaster').hidden=!state.active;
   if(state.active){
@@ -291,19 +314,33 @@ function render(){
   }
   $('cooldownText').textContent=!state.settings?'كارثة واحدة فقط. فاصل 8 ملايين سنة بعد انتهائها.':state.active?'كارثة نشطة. يبدأ فاصل 8 ملايين سنة بعد نهاية نافذة أثرها.':state.remaining_cooldown_million_years>0?'الكارثة التالية بعد '+fmt.format(state.remaining_cooldown_million_years)+' مليون سنة افتراضية على الأقل.':'التحكم جاهز. فاصل 8 ملايين سنة بعد نهاية كل كارثة.';
   $('eventCount').textContent=state.actions.length;
-  const eventKey=state.session_id+':'+state.actions.length;
+  const eventKey=state.session_id+':'+state.actions.length+':'+(state.pending_removal?'pending':'applied')+':'+alive;
   if(state.actions.length&&eventKey!==lastEventKey){
     $('eventList').innerHTML=[...state.actions].reverse().map(e=>{
+      if(e.type==='remove_program'){
+        const applied=e.execution_tick<=state.tick,at=(applied?e.execution_tick:e.tick)*Number(state.settings.duration_million_years)/state.settings.steps;
+        return `<div class="event-item removal-event"><svg><use href="#i-world"/></svg><div><strong>إزالة ${LABELS[PROGRAMS.indexOf(e.strategy)]} · ${applied?'نُفّذت':alive?'مجدولة':'لم تُنفّذ'}</strong><small>${e.target==='all'?'جميع البيئات':ENV.find(w=>w.id===e.target).label} · ${count.format(e.scheduled_count)} فردًا · ${applied?'التنفيذ':'التنفيذ المطلوب'} عند التحديث ${e.execution_tick}</small></div><time>${fmt.format(at)} Ma</time></div>`;
+      }
       const at=e.tick*Number(state.settings.duration_million_years)/state.settings.steps;
       const impact=e.kind==='drought'?'فقد غذاء '+Math.round(e.resource_loss*100)+'%':e.kind==='bottleneck'?'وفيات '+Math.round(e.mortality*100)+'%':'وفيات '+Math.round(e.mortality*100)+'% · فقد غذاء '+Math.round(e.resource_loss*100)+'%';
       return `<div class="event-item"><svg><use href="#i-spark"/></svg><div><strong>${KINDS[e.kind]}</strong><small>${e.target==='all'?'جميع البيئات':ENV.find(w=>w.id===e.target).label} · ${impact} · خطوة ${e.tick}</small></div><time>${fmt.format(at)} Ma</time></div>`;
     }).join('');
   } else if(!state.actions.length&&eventKey!==lastEventKey){
-    $('eventList').innerHTML='<div class="empty-events"><svg><use href="#i-wave"/></svg><p>كل كارثة إلها أثر… وسجل.</p><small>النوع والشدة والتوقيت تُحفظ لإعادة التجربة.</small></div>';
+    $('eventList').innerHTML='<div class="empty-events"><svg><use href="#i-wave"/></svg><p>كل تدخل إله أثر… وسجل.</p><small>النوع والشدة والتوقيت تُحفظ لإعادة التجربة.</small></div>';
   }
   lastEventKey=eventKey;
   if(state.latest_export)showExport(state.latest_export);else $('exportReady').hidden=true;
-  renderDetails();renderChart();renderLegend();
+  renderRemoval();renderDetails();renderChart();renderLegend();
+}
+function renderRemoval(){
+  const target=$('removalScope').value==='all'?'all':focus;
+  const result=removalSummary(state,$('removalStrategy').value,target);
+  $('removalHint').textContent=(target==='all'?'جميع البيئات المشتركة':ENV.find(e=>e.id===focus).label)+' · '+count.format(result.population)+' فردًا من الطريقة المختارة.';
+  $('removeProgramButton').disabled=!result.allowed;
+  $('removalStrategy').disabled=$('removalScope').disabled=Boolean(state?.pending_removal)||isolated(state);
+  const messages={isolated:'متاحة في المنافسة المشتركة؛ ابدأ تجربة بهذا الوضع لاختبار أثر المنافسين.',inactive:'ابدأ تجربة منافسة مشتركة لتفعيل الإزالة.',catastrophe:'انتظر انتهاء أثر الكارثة قبل الإزالة.',pending:'الإزالة مجدولة للتحديث '+state?.pending_removal?.execution_tick+(state?.status==='paused'?'؛ اضغط متابعة لتنفيذها.':'.'),absent:'هذه الطريقة غير موجودة حاليًا في النطاق المختار.'};
+  const total=(state?.worlds||[]).reduce((sum,w)=>sum+(w.experimental_removals??0),0);
+  $('removalState').textContent=(messages[result.reason]||'تُنفّذ عند التحديث القادم. لا يتغيّر مخزون الغذاء أو تجددُه مباشرةً.')+(total?' أُزيل بتدخلك حتى الآن: '+count.format(total)+' فردًا.':'');
 }
 function renderDetails(){
   const observations=comparisonRows(state,focus);
@@ -323,7 +360,7 @@ function renderDetails(){
     cells[3].textContent=row?.mean_performance==null?'—':row.mean_performance.toFixed(3);
     const survival=survivalSummary(row,state),cell=cells[4];
     cell.className='survival-cell '+(survival?.status || '');
-    cell.children[0].textContent=!survival?'—':survival.status==='extinct'?'انقرض':survival.status==='ongoing'?'مستمر حتى الآن':survival.status==='censored'?'باقٍ عند نهاية الرصد':'توقيت غير مسجّل';
+    cell.children[0].textContent=!survival?'—':survival.status==='removed'?'أُزيل بتدخلك':survival.status==='extinct'?'انقرض':survival.status==='ongoing'?'مستمر حتى الآن':survival.status==='censored'?'باقٍ عند نهاية الرصد':'توقيت غير مسجّل';
     cell.children[1].textContent=survival?.observed_million_years==null?'':(survival.event_observed?'عند ':'≥ ')+survivalNumber.format(survival.observed_million_years);
     cell.children[2].textContent=survival?.observed_tick==null?'':count.format(survival.observed_tick)+' تحديث';
   });
@@ -333,14 +370,14 @@ function inspectStrategy(index){
   if(!r){notify('ابدأ تجربة لعرض المقاييس الفعلية.');return;}
   activeProgram=index;$('strategyTitle').textContent=LABELS[index]+' · '+ENV.find(env=>env.id===focus).label;
   const survival=survivalSummary(r,state);
-  const c=r.cumulative,items=[['حالة الصمود',survival.status==='extinct'?'انقرض':survival.status==='ongoing'?'مستمر حتى الآن':survival.status==='censored'?'باقٍ عند نهاية الرصد':'توقيت غير مسجّل'],
+  const c=r.cumulative,items=[['حالة الصمود',survival.status==='removed'?'أُزيل بتدخلك':survival.status==='extinct'?'انقرض':survival.status==='ongoing'?'مستمر حتى الآن':survival.status==='censored'?'باقٍ عند نهاية الرصد':'توقيت غير مسجّل'],
     ['مدة الصمود المرصودة · مليون سنة افتراضية',survival.observed_million_years==null?'—':(survival.event_observed?'':'≥ ')+survivalNumber.format(survival.observed_million_years)],
-    ['التحديثات المرصودة من البداية',survival.observed_tick],['وقت الانقراض · مليون سنة افتراضية',survival.extinction_million_years==null?'لم يُرصد':survivalNumber.format(survival.extinction_million_years)],
+    ['التحديثات المرصودة من البداية',survival.observed_tick],[survival.status==='removed'?'وقت الإزالة · مليون سنة افتراضية':'وقت الانقراض · مليون سنة افتراضية',survival.extinction_million_years==null?'لم يُرصد':survivalNumber.format(survival.extinction_million_years)],
     ['السكان الأحياء',r.population],['الناضجون',r.mature],['متوسط العمر بالتحديثات',r.mean_age],
     ['الأداء في النموذج',r.mean_performance],['التنوع الجيني',r.gene_diversity],['اختلاف النسختين الجينيتين',r.heterozygosity],
     ['عدم التطابق مع البيئة',r.adaptive_lag],['ارتباط المواضع D²',r.mean_linked_D2],['متوسط احتمال الخلط',r.mean_mix_probability],
     ['محاولات الإنجاب',c.attempts],['مواليد مقبولون',c.realized_newborns],['فشل إيجاد شريك',c.mate_failures],['فشل اللقاء',c.encounter_failures],
-    ['وفيات عادية',c.survival_deaths],['وفيات الكوارث',c.catastrophe_deaths],['وفيات نقص الغذاء',c.maintenance_deaths],
+    ['أفراد أُزيلوا بتدخلك',c.experimental_removals??0],['وفيات عادية',c.survival_deaths],['وفيات الكوارث',c.catastrophe_deaths],['وفيات نقص الغذاء',c.maintenance_deaths],
     ['وفيات بالغين بسبب السعة',c.capacity_adult_deaths],['مواليد لم تستوعبهم السعة',c.capacity_newborn_deaths],
     ['جهد الإنجاب الاسمي',c.effort_spent],['موارد بناء الأبناء',c.offspring_resources],['خطوة الانقراض',r.extinction_tick]];
   $('strategyContent').innerHTML=items.map(([label,value])=>`<div class="inspector-info"><span>${label}</span><strong>${value==null?'—':typeof value==='string'?value:Number.isInteger(value)?count.format(value):Number(value).toFixed(4)}</strong></div>`).join('');
@@ -378,6 +415,12 @@ function renderChart(){
     ctx.strokeStyle=line.color;ctx.lineWidth=1.8;ctx.beginPath();
     for(let i=0;i<history.length;i+=stride){const x=left+pw*history[i].million_years/maxTime,y=top+ph*(1-line.values[i]/max);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
     const last=history.length-1;ctx.lineTo(left+pw*history[last].million_years/maxTime,top+ph*(1-line.values[last]/max));ctx.stroke();
+  }
+  for(const event of removalMarkers(state,focus,chartMode)){
+    const x=left+pw*event.execution_tick/state.settings.steps;
+    ctx.strokeStyle=COLORS[PROGRAMS.indexOf(event.strategy)];ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,top+ph);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.moveTo(x-4,top);ctx.lineTo(x+4,top);ctx.lineTo(x,top+6);ctx.fill();
   }
 }
 function hash(value){const x=Math.sin(value*127.1+311.7)*43758.5453;return x-Math.floor(x);}
@@ -426,5 +469,5 @@ async function poll(){
 }
 async function pollLoop(){await poll();setTimeout(pollLoop,state?.status==='running'?250:800);}
 new ResizeObserver(()=>{renderChart();}).observe($('historyChart').parentElement);
-updateSettingsHint();ensureWorldGrid();renderLegend();renderDetails();requestAnimationFrame(animate);pollLoop();
+updateSettingsHint();ensureWorldGrid();renderRemoval();renderLegend();renderDetails();requestAnimationFrame(animate);pollLoop();
 }

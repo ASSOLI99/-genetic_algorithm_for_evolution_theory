@@ -223,6 +223,7 @@ class LabSession:
         self.history = []
         self.actions = []
         self.active = None
+        self.pending_removal = None
         self.next_allowed_tick = 0
         self.speed = 20.0
         self.last_client = time.monotonic()
@@ -262,6 +263,7 @@ class LabSession:
             self.worlds = {name: initialize(config) for name, config in cfg.configs().items()}
             self.tick, self.history, self.actions = 0, [], []
             self.active, self.next_allowed_tick = None, 0
+            self.pending_removal = None
             self.speed, self.error = cfg.speed, None
             self.session_id = uuid.uuid4().hex
             self.stop_signal = threading.Event()
@@ -281,8 +283,15 @@ class LabSession:
                              'resources': {name: s.resources for name, s in self.worlds.items()}})
 
     def _advance(self):
-        for state in self.worlds.values():
-            step(state)
+        pending = self.pending_removal
+        for name, state in self.worlds.items():
+            affected = pending is not None and name in pending['counts_by_world']
+            program = STRATEGIES.index(pending['strategy']) if affected else None
+            previous = state.cumulative['experimental_removals'][program] if affected else 0
+            step(state, remove_programs=(program,) if affected else ())
+            if affected and state.cumulative['experimental_removals'][program]-previous != pending['counts_by_world'][name]:
+                raise ValueError('Reserved experimental removal count changed')
+        self.pending_removal = None
         self.tick += 1
         if self.active and self.tick >= self.active['end_tick']:
             self.active = None
@@ -342,6 +351,8 @@ class LabSession:
                 raise SessionError('not_running', 'ابدأ تجربة قبل إضافة كارثة.', 409)
             if self.active:
                 raise SessionError('catastrophe_active', 'توجد كارثة نشطة بالفعل؛ لا يمكن تداخل الكوارث.', 409)
+            if self.pending_removal:
+                raise SessionError('intervention_pending', 'نفّذ الإزالة المجدولة قبل إضافة كارثة.', 409)
             if self.tick < self.next_allowed_tick:
                 raise SessionError('catastrophe_cooldown', 'يجب مرور 8 ملايين سنة افتراضية على الأقل بعد انتهاء الكارثة السابقة.', 409)
             allowed = {'kind', 'target', 'mortality', 'resource_loss', 'renewal_factor', 'duration_million_years'}
@@ -356,7 +367,7 @@ class LabSession:
             if duration > Decimal(self.settings.duration_million_years):
                 raise SessionError('invalid_catastrophe', 'مدة الكارثة أطول من السيناريو الكامل.')
             ticks = self.settings.ticks_for_years(duration*1_000_000)
-            event = {'kind': kind, 'target': target, 'tick': self.tick, 'end_tick': self.tick+ticks,
+            event = {'type': 'catastrophe', 'kind': kind, 'target': target, 'tick': self.tick, 'end_tick': self.tick+ticks,
                      'duration_ticks': ticks, 'duration_million_years': str(duration),
                      'mortality': finite_number(values.get('mortality', .5), 'شدة الوفيات', 0, 1),
                      'resource_loss': finite_number(values.get('resource_loss', .75), 'خسارة الغذاء', 0, 1),
@@ -367,6 +378,31 @@ class LabSession:
             elif kind == 'bottleneck':
                 event['resource_loss'], event['renewal_factor'] = 0.0, 1.0
             self._apply_event(event)
+            return dict(event)
+
+    def remove_program(self, values):
+        with self.lock:
+            if self.status not in ('running', 'paused'):
+                raise SessionError('not_running', 'ابدأ تجربة منافسة قبل إزالة طريقة.', 409)
+            if self.settings.comparison_mode != 'competition':
+                raise SessionError('removal_requires_competition', 'الإزالة متاحة في العالم المشترك فقط.', 409)
+            if self.active or self.pending_removal:
+                raise SessionError('intervention_pending', 'انتظر انتهاء الكارثة أو تنفيذ الإزالة المجدولة.', 409)
+            if not isinstance(values, dict) or set(values) != {'strategy', 'target'}:
+                raise SessionError('invalid_removal', 'حدّد طريقة تكاثر ونطاق الإزالة فقط.')
+            strategy, target = values['strategy'], values['target']
+            if strategy not in STRATEGIES or target not in (*self.worlds, 'all'):
+                raise SessionError('invalid_removal', 'طريقة التكاثر أو البيئة غير صالحة.')
+            program = STRATEGIES.index(strategy)
+            affected = {name: int(np.count_nonzero(state.strategy == program)) for name,state in self.worlds.items() if target in ('all',name)}
+            total = sum(affected.values())
+            if not total:
+                raise SessionError('program_absent', 'لا يوجد أفراد أحياء من هذه الطريقة في النطاق المختار.', 409)
+            event = {'type': 'remove_program', 'strategy': strategy, 'target': target,
+                     'tick': self.tick, 'execution_tick': self.tick+1,
+                     'counts_by_world': affected, 'scheduled_count': total}
+            self.pending_removal = dict(event)
+            self.actions.append(dict(event))
             return dict(event)
 
     def _apply_event(self, event):
@@ -395,6 +431,7 @@ class LabSession:
                     row['cumulative'] = {key: values[i] for key, values in state.cumulative.items()}
                     row['extinction_tick'] = state.extinct.get(row['strategy'])
                     row['initial_count'] = state.config.initial_counts[i]
+                    row['extinction_cause'] = ('experimental_removal' if state.cumulative['experimental_removals'][i] else 'population_dynamics') if row['extinction_tick'] is not None else None
                 n = len(state.ids)
                 p = state.genomes.mean(axis=(0, 1)) if n else None
                 scores = performance(state)
@@ -413,6 +450,7 @@ class LabSession:
                     'births': int(sum(state.cumulative['realized_newborns'])),
                     'deaths': int(sum(sum(state.cumulative[k]) for k in ('survival_deaths', 'catastrophe_deaths', 'maintenance_deaths', 'capacity_adult_deaths'))),
                     'catastrophe_deaths': int(sum(state.cumulative['catastrophe_deaths'])),
+                    'experimental_removals': int(sum(state.cumulative['experimental_removals'])),
                     'dots': dots, 'extinct': not n})
             return {'status': self.status, 'session_id': self.session_id, 'tick': self.tick,
                 'settings': self.settings.to_dict() if self.settings else None,
@@ -420,6 +458,7 @@ class LabSession:
                 'progress': self.tick/self.settings.steps if self.settings else 0,
                 'worlds': worlds, 'history': [h for h in self.history if h['tick'] > after],
                 'actions': list(self.actions), 'active': dict(self.active) if self.active else None,
+                'pending_removal': dict(self.pending_removal) if self.pending_removal else None,
                 'next_allowed_tick': self.next_allowed_tick, 'speed': self.speed,
                 'remaining_cooldown_million_years': self.settings.million_years_at(max(0, self.next_allowed_tick-self.tick)) if self.settings else 0,
                 'elapsed_seconds': now-self.started if self.started else 0,
@@ -444,12 +483,13 @@ class LabSession:
             destination.mkdir()
             save_checkpoint(destination/'checkpoint.npz', state)
             summaries[name] = write_outputs(destination, state, {'provenance': provenance(), 'interactive': True})
-        manifest = {'schema': 'interactive-2', 'settings': self.settings.to_dict(),
+        manifest = {'schema': 'interactive-3', 'settings': self.settings.to_dict(),
             'world_layout': {name: {'environment': state.config.environment, 'initial_counts': list(state.config.initial_counts),
                                    'capacity': state.config.capacity, 'resources': {k: getattr(state.config,k) for k in ('initial_resources','resource_capacity','resource_renewal')}} for name,state in self.worlds.items()},
             'clock': 'Scenario display clock; not empirically calibrated biological years',
             'cooldown': 'At least 8,000,000 scenario years after the previous disaster ends; rounded up to a full update',
             'status': self.status, 'tick': self.tick, 'actions': self.actions,
+            'pending_removal': self.pending_removal,
             'signature': signature(), 'provenance': provenance(),
             'final_fingerprint': {name: fingerprint(state) for name, state in self.worlds.items()},
             'final_state_sha256': {name: state_digest(state) for name, state in self.worlds.items()}}
@@ -483,10 +523,20 @@ class LabSession:
                 if not entry['initial_count']:
                     continue
                 event = entry['extinction_tick']
+                removed = int(entry['cumulative']['experimental_removals'])
+                loss = f'إزالة تجريبية · تحديث {event}' if removed else event if event is not None else 'باقٍ عند نهاية الرصد'
                 cells = (environment, label, entry['population'], int(entry['cumulative']['realized_newborns']),
-                         int(entry['cumulative']['catastrophe_deaths']), event if event is not None else 'باقٍ عند نهاية الرصد',
+                         int(entry['cumulative']['catastrophe_deaths']), removed, loss,
                          self.settings.million_years_at(event if event is not None else self.tick))
                 rows.append('<tr>'+''.join(f'<td>{html.escape(str(v))}</td>' for v in cells)+'</tr>')
+        interventions = []
+        for action in self.actions:
+            removal = action.get('type') == 'remove_program'
+            tick = action['execution_tick'] if removal else action['tick']+1
+            values = (('إزالة '+LABELS[STRATEGIES.index(action['strategy'])]) if removal else action['kind'],
+                      'جميع البيئات' if action['target'] == 'all' else ENVIRONMENTS[action['target']],
+                      tick, 'نُفّذت' if tick <= self.tick else 'لم تُنفّذ', action['scheduled_count'] if removal else '—')
+            interventions.append('<tr>'+''.join(f'<td>{html.escape(str(v))}</td>' for v in values)+'</tr>')
         document = ('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>Evolution Lab — جلسة تفاعلية</title>'
             '<style>body{font:16px Tahoma,Arial;max-width:1100px;margin:40px auto;padding:20px;line-height:1.8;color:#172333}'
             'table{border-collapse:collapse;width:100%}td,th{padding:10px;border:1px solid #ccd6df}th{background:#eef4f7}</style>'
@@ -495,22 +545,24 @@ class LabSession:
             f'<p>التحديثات المنفذة: {self.tick} من {self.settings.steps}؛ زمن السيناريو المعروض: {self.settings.million_years_at(self.tick):g} مليون سنة.</p>'
             '<p>الزمن افتراضي وغير معاير بيولوجيًا. هذه تجربة واحدة بتدخلات يدوية مسجلة؛ لا تمثل تكرارات مستقلة أو دليل تفوق إحصائي. '
             'الميكانيكيات ذات 4/8 مساهمين افتراضية. النقاط في الواجهة عينة من أفراد المحاكاة وليست خريطة مكانية أو نموذج هجرة.</p>'
-            f'<p>الكوارث المسجلة: {len(self.actions)}. كل ملفات الأرقام والجينات والحفظ والبذور موجودة في مجلدات البيئات. '
+            f'<p>الكوارث المسجلة: {sum(e.get("type") != "remove_program" for e in self.actions)}؛ طلبات الإزالة: {sum(e.get("type") == "remove_program" for e in self.actions)}. كل ملفات الأرقام والجينات والحفظ والبذور موجودة في مجلدات البيئات. '
             'session.json يسجل المدخلات والتوقيت وبصمات المصدر لإعادة التجربة؛ history.json يحفظ السلاسل الزمنية.</p>'
+            '<p>الإزالة التجريبية تدخل متعمد قبل الوفيات والتكاثر في التحديث التالي، وتُسجّل منفصلة عن الوفيات. لا تضيف غذاءً أو تعيد تكاليف سابقة ولا تغيّر السعة. فقدان المجموعة بالإزالة ليس دليلًا على انقراضها الطبيعي. الطلب المعلّق لم يُنفّذ إذا انتهى الرصد قبل تحديثه.</p>'
             '<p>في العزلة كل طريقة تملك مجتمعًا وموارد منفصلة؛ الميزانية الكلية أكبر من المنافسة. نفس البذرة تقرن المؤسسين والبيئة حيث ينطبق، ولا تجعل العوالم تكرارات مستقلة. الكارثة موحّدة الاحتمال والتوقيت، وقد تختلف الوفيات الفعلية.</p>'
             '<h2>حالة العوالم</h2><table><tr><th>العالم</th><th>البداية</th><th>السعة</th><th>غذاء البداية</th><th>تجدد الغذاء</th><th>الأحياء</th><th>طرق باقية</th></tr>'
-            +''.join(totals)+'</table><h2>طرق التكاثر</h2><table><tr><th>البيئة</th><th>طريقة التكاثر</th><th>العدد</th><th>مواليد مقبولون</th><th>وفيات الكوارث المباشرة</th><th>تحديث الانقراض / الحالة</th><th>صمود مرصود · مليون سنة افتراضية</th></tr>'
-            +''.join(rows)+'</table></html>')
+            +''.join(totals)+'</table><h2>طرق التكاثر</h2><table><tr><th>البيئة</th><th>طريقة التكاثر</th><th>العدد</th><th>مواليد مقبولون</th><th>وفيات الكوارث المباشرة</th><th>أُزيلوا بتدخل</th><th>تحديث الانقراض / الحالة</th><th>صمود مرصود · مليون سنة افتراضية</th></tr>'
+            +''.join(rows)+'</table><h2>سجل التدخلات</h2><table><tr><th>التدخل</th><th>النطاق</th><th>تحديث التنفيذ</th><th>الحالة</th><th>عدد الإزالة</th></tr>'
+            +''.join(interventions)+'</table></html>')
         (folder/'REPORT.html').write_text(document, encoding='utf-8')
 
 
 def replay_session(path):
     manifest = json.loads(Path(path).read_text(encoding='utf-8'))
-    if manifest.get('schema') not in ('interactive-1', 'interactive-2') or manifest.get('signature') != signature():
+    if manifest.get('schema') not in ('interactive-1', 'interactive-2', 'interactive-3') or manifest.get('signature') != signature():
         raise ValueError('Interactive replay source/runtime signature mismatch')
     session = LabSession(Path(path).parent/'unused_replay_output')
     session.configure(manifest['settings'], acknowledge_resources=True)
-    if manifest['schema'] == 'interactive-2':
+    if manifest['schema'] in ('interactive-2', 'interactive-3'):
         layout = {name: {'environment': state.config.environment, 'initial_counts': list(state.config.initial_counts),
                          'capacity': state.config.capacity, 'resources': {k: getattr(state.config,k) for k in ('initial_resources','resource_capacity','resource_renewal')}} for name,state in session.worlds.items()}
         if layout != manifest.get('world_layout'):
@@ -519,11 +571,17 @@ def replay_session(path):
     if type(target) is not int or not 0 <= target <= session.settings.steps:
         raise ValueError('Invalid replay tick')
     actions = manifest['actions']
+    def replay_action(event):
+        if event.get('type') == 'remove_program':
+            return session.remove_program({k: event[k] for k in ('strategy', 'target')})
+        if event.get('type', 'catastrophe') != 'catastrophe':
+            raise ValueError('Unknown intervention type')
+        return session.catastrophe({k: event[k] for k in ('kind', 'target', 'mortality', 'resource_loss', 'renewal_factor', 'duration_million_years')})
     next_action = 0
     while session.tick < target:
         while next_action < len(actions) and actions[next_action]['tick'] == session.tick:
             event = actions[next_action]
-            actual = session.catastrophe({k: event[k] for k in ('kind', 'target', 'mortality', 'resource_loss', 'renewal_factor', 'duration_million_years')})
+            actual = replay_action(event)
             if actual != event:
                 raise ValueError('Interactive event policy mismatch')
             next_action += 1
@@ -533,11 +591,11 @@ def replay_session(path):
     # A paused export may include an accepted event not yet executed.
     while next_action < len(actions) and actions[next_action]['tick'] == target:
         event = actions[next_action]
-        actual = session.catastrophe({k: event[k] for k in ('kind', 'target', 'mortality', 'resource_loss', 'renewal_factor', 'duration_million_years')})
+        actual = replay_action(event)
         if actual != event:
             raise ValueError('Pending event policy mismatch')
         next_action += 1
-    if (next_action != len(actions) or {name: state_digest(state) for name, state in session.worlds.items()} != manifest['final_state_sha256']
+    if (next_action != len(actions) or session.pending_removal != manifest.get('pending_removal') or {name: state_digest(state) for name, state in session.worlds.items()} != manifest['final_state_sha256']
             or {name: fingerprint(state) for name, state in session.worlds.items()} != manifest['final_fingerprint']):
         raise ValueError('Interactive replay state mismatch')
     return session

@@ -214,6 +214,30 @@ def test_http_full_live_flow_and_export(http_lab):
     assert request(http_lab,'/api/control',{'action':'stop'})[0]==200
 
 
+def test_http_removal_route_reserves_applies_and_exports_separate_cause(http_lab):
+    lab=http_lab.lab
+    lab.configure({'steps':100,'capacity':168,'seed':42},True)
+    lab.control('pause')
+    body={'strategy':'two_parent','target':'static'}
+    assert request(http_lab,'/api/remove-program',body,{'X-Evolution-Token':'bad'})[0]==403
+    status,data=request(http_lab,'/api/remove-program',body)
+    event=json.loads(data)
+    assert status==200 and event['scheduled_count']==16 and event['execution_tick']==1
+    assert request(http_lab,'/api/remove-program',body)[0]==409
+    assert lab.tick==0 and np.count_nonzero(lab.worlds['static'].strategy==1)==16
+    lab.advance_ticks(1)
+    status,data=request(http_lab,'/api/state')
+    observed=json.loads(data)['worlds'][0]['strategies'][1]
+    assert status==200 and observed['population']==0
+    assert observed['cumulative']['experimental_removals']==16
+    assert observed['extinction_cause']=='experimental_removal'
+    status,data=request(http_lab,'/api/export',{})
+    assert status==200
+    saved=json.loads(data)
+    assert request(http_lab,saved['download'])[1][:2]==b'PK'
+    assert 'إزالة تجريبية' in request(http_lab,saved['report'])[1].decode('utf-8')
+
+
 def test_isolated_worlds_have_equal_budgets_and_paired_founders(tmp_path):
     lab=make_session(tmp_path,comparison_mode='isolated',initial_population=32,
                      resource_capacity=400,initial_resources=300,resource_renewal=40)
@@ -301,13 +325,13 @@ def test_isolated_export_replay_and_report_risk_sets(tmp_path):
     lab.advance_ticks(12)
     saved=lab.export();folder=Path(saved['directory'])
     manifest=json.loads((folder/'session.json').read_text())
-    assert manifest['schema']=='interactive-2' and len(manifest['world_layout'])==21
+    assert manifest['schema']=='interactive-3' and len(manifest['world_layout'])==21
     restored=replay_session(folder/'session.json')
     for name,state in lab.worlds.items():
         assert fingerprint(state)==fingerprint(restored.worlds[name])
         assert state.ledger==restored.worlds[name].ledger
     report=(folder/'REPORT.html').read_text(encoding='utf-8')
-    assert report.count('<tr>')==44  # 21 world summaries + 21 at-risk program rows + two headers
+    assert report.count('<tr>')==46  # 21 worlds + 21 programs + one intervention + three headers
     assert 'None' not in report
     restart=LabSession(lab.output_root)
     assert restart.exports[saved['id']].is_file()

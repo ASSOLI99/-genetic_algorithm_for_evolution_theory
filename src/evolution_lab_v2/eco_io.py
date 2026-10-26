@@ -11,12 +11,12 @@ import numpy as np
 
 from .artifacts import provenance, signature, write_json
 from .eco_config import EcoConfig, STRATEGIES
-from .ecology import ARRAYS, STREAMS, EcoState, advance, initialize, observe, state_digest
+from .ecology import ARRAYS, STREAMS, COUNTERS, EcoState, advance, initialize, observe, state_digest
 
 
 def save_checkpoint(path, state):
     path = Path(path)
-    meta = {"schema": "demographic-2", "signature": signature(), "config": state.config.to_dict(),
+    meta = {"schema": "demographic-3", "signature": signature(), "config": state.config.to_dict(),
             "tick": state.tick, "resources": state.resources, "next_id": state.next_id,
             "catastrophe_until": state.catastrophe_until,
             "rng_states": {name: rng.bit_generator.state for name, rng in state.rngs.items()}}
@@ -32,7 +32,7 @@ def save_checkpoint(path, state):
 def load_checkpoint(path, config):
     with np.load(path, allow_pickle=False) as archive:
         meta = json.loads(str(archive["metadata"].item()))
-        if meta["schema"] != "demographic-2" or meta["signature"] != signature():
+        if meta["schema"] != "demographic-3" or meta["signature"] != signature():
             raise ValueError("Demographic checkpoint code/runtime signature mismatch")
         arrays = {name: archive[name].copy() for name in (*ARRAYS, "environment", "parasite", "catastrophe_schedule")}
     if EcoConfig.from_dict(meta["config"]) != config:
@@ -76,6 +76,8 @@ def load_checkpoint(path, config):
         raise ValueError("Invalid resource stock")
     if len(meta["ledger"]) != tick*len(STRATEGIES) or len(meta["resource_ledger"]) != tick:
         raise ValueError("Incomplete accounting history")
+    if set(meta["cumulative"]) != set(COUNTERS) or any(len(values) != len(STRATEGIES) or any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in values) for values in meta["cumulative"].values()):
+        raise ValueError("Invalid demographic cumulative counters")
     if config.record_parentage and len(meta["parentage"]) != next_id-sum(config.initial_counts):
         raise ValueError("Incomplete parentage history")
     rngs = {}
@@ -121,7 +123,7 @@ def write_outputs(directory, state, manifest):
               ["tick", "regime", "population_before", "deaths", "counts_before", "deaths_by_strategy",
                "stock_before", "stock_lost", "stock_after_shock", "renewal_depressed_until_exclusive"])
     write_csv(directory/"founders.csv", state.founders)
-    write_csv(directory/"events.csv", state.events, ["tick", "event", "strategy", "threshold"])
+    write_csv(directory/"events.csv", state.events, ["tick", "event", "strategy", "threshold", "removed_count"])
     write_csv(directory/"parentage.csv.gz", state.parentage,
               ["offspring_id", "birth_tick", "mating_tick", "strategy", "parents", "parent_birth_ticks", "parent_strategies",
                "parent_mating_types", "contributed_copies", "requested_parents", "fallback", "funded", "recruited"])
@@ -130,6 +132,7 @@ def write_outputs(directory, state, manifest):
     for i, row in enumerate(final):
         by_strategy[row["strategy"]] = {**row, "initial_count": state.config.initial_counts[i],
                                        "extinction_tick": state.extinct.get(row["strategy"]),
+                                       "extinction_cause": ("experimental_removal" if state.cumulative["experimental_removals"][i] else "population_dynamics") if row["strategy"] in state.extinct else None,
                                        "threshold_tick": state.established.get(row["strategy"]),
                                        "fixation_tick": next((e['tick'] for e in state.events if e['event'] == 'strategy_fixation' and e['strategy'] == row['strategy']), None),
                                        "realized_births_per_offspring_resource": state.cumulative['realized_newborns'][i]/state.cumulative['offspring_resources'][i] if state.cumulative['offspring_resources'][i] else None,

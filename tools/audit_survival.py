@@ -78,7 +78,7 @@ def inspect(directory):
         s=row['strategy']; tick=int(row['tick']); x={k:float(v) for k,v in row.items() if k!='strategy'}
         if tick!=index//7+1 or s!=STRATEGIES[index%7]:raise ValueError('Ledger order')
         if int(x['start'])!=previous[s]:raise ValueError('Population continuity')
-        expected=x['start']+x['realized_newborns']-sum(x[k] for k in ('survival_deaths','catastrophe_deaths','maintenance_deaths','capacity_adult_deaths'))
+        expected=x['start']+x['realized_newborns']-sum(x[k] for k in ('survival_deaths','catastrophe_deaths','maintenance_deaths','capacity_adult_deaths'))-x.get('experimental_removals',0)
         if expected!=x['end']:raise ValueError('Population balance')
         if x['raw_newborns']!=x['funded_newborns']+x['resource_rejected']:raise ValueError('Funding balance')
         if x['funded_newborns']!=x['realized_newborns']+x['capacity_newborn_deaths']:raise ValueError('Recruitment balance')

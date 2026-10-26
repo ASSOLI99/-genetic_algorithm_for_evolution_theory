@@ -6,6 +6,20 @@ V0.3 adds strategy-neutral catastrophe mortality, drought stock/renewal shocks, 
 
 This release publishes source code, tests, configurations and methods. Generated runs, checkpoints, historical results, analysis reports and unpublished research notes remain local and are excluded by `.gitignore`. Analysis and reporting code is included so users can generate their own outputs.
 
+## Live graphical laboratory
+
+Version 0.4 adds an Arabic local dashboard with three live environment panels, population/resource charts, actual individual/genome inspection, detailed strategy metrics, pause/resume/speed controls and manual catastrophes. Start from the checkout:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Start-GUI.ps1
+# Or, with the project already installed:
+.\.venv\Scripts\python.exe -m evolution_lab_v2 gui --port 8765
+```
+
+The service binds only to `http://127.0.0.1:8765`. It needs no external frontend libraries, accounts, CDN or hosting. Before starting, users acknowledge a CPU/RAM/browser-resource notice. Display durations begin at one million **scenario years**; actual computation is separately bounded and explicitly shown. The clock is not calibrated geological time. The global catastrophe policy permits one active event, followed by at least eight million scenario years of cooldown after its end, rounded up to complete updates. Pause freezes both clocks. A lost UI heartbeat pauses processing after 20 seconds.
+
+Normal completion/stop and manual export save a local HTML report, environment checkpoints/metrics/ledgers, history and an exact intervention journal in `runs/gui_*`, with a downloadable ZIP. `replay_session` in `gui_session.py` reproduces the recorded biological state and RNG/resource fingerprints under the same source/runtime. Single adaptive interactive sessions are descriptive; they are not independent statistical replicates. See [GUI_PROTOCOL.md](GUI_PROTOCOL.md) for the full time, resource, model and replay contract. Full offspring parentage is disabled in live sessions to bound memory; genomes remain in checkpoints.
+
 ## Run the prepared comparison
 
 Arabic instructions: `RUN_ME_AR.md`. The PowerShell launcher verifies pinned dependencies, runs the test suite, freezes the plan, runs/resumes the batch and opens a local HTML report with PNG/SVG figures.

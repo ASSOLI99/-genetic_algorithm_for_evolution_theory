@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="evolution-token" content="__TOKEN__">
+  <title>Evolution Lab · المختبر الحي</title>
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+<svg class="icon-defs" aria-hidden="true"><defs>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4"/></symbol>
+<symbol id="i-spark" viewBox="0 0 24 24"><path d="m13 2-9 12h7l-1 8 10-13h-7Z"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-11v1"/></symbol>
+<symbol id="i-dna" viewBox="0 0 24 24"><path d="M6 2c0 10 12 10 12 20M18 2C18 12 6 12 6 22M7 5h10M7 19h10M9 9h6M9 15h6"/></symbol>
+<symbol id="i-wave" viewBox="0 0 24 24"><path d="M2 13h4l3-8 5 15 3-7h5"/></symbol>
+<symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 2S5 10 5 15a7 7 0 0 0 14 0C19 10 12 2 12 2Z"/></symbol>
+<symbol id="i-world" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6h14M5 18h14"/></symbol>
+</defs></svg>
+<header class="masthead">
+  <a class="brand" href="/" aria-label="Evolution Lab"><span class="brand-mark"><svg><use href="#i-dna"/></svg></span><span>EVOLUTION<span class="brand-light"> LAB</span><small>INTERACTIVE OBSERVATORY</small></span></a>
+  <div class="header-right"><span class="local-pill"><i></i> محلي على جهازك</span><button class="icon-button" id="helpButton" aria-label="حول النموذج والزمن"><svg><use href="#i-info"/></svg></button><span class="version">v0.4</span></div>
+</header>
+<div class="app-shell">
+<aside class="sidebar">
+  <section class="panel settings-panel">
+    <div class="panel-title"><span class="eyebrow">EXPERIMENT DESIGN</span><h2>صمّم التجربة</h2></div>
+    <label class="field-label" for="duration">مدة السيناريو <span>مليون سنة افتراضية</span></label>
+    <div class="duration-input"><input id="duration" type="number" min="1" step="1" value="100" inputmode="decimal"><span>Ma</span></div>
+    <div class="presets" id="durationPresets"><button data-duration="10">10 M</button><button class="selected" data-duration="100">100 M</button><button data-duration="1000">1 B</button></div>
+    <div class="range-label"><label for="steps">دقة الحساب</label><output id="stepsOutput">1,000 تحديث</output></div>
+    <input id="steps" type="range" min="100" max="5000" step="100" value="1000">
+    <p class="micro" id="resolutionHint">كل تحديث يعرض 0.1 مليون سنة من زمن السيناريو.</p>
+    <label class="field-label" for="capacity">السعة لكل بيئة</label>
+    <select id="capacity"><option value="168">168 فردًا · حمل أخف</option><option value="336" selected>336 فردًا · متوازن</option><option value="672">672 فردًا · حمل أعلى</option></select>
+    <details class="advanced"><summary>الجينات والتكلفة والبذرة</summary>
+      <label class="field-label" for="mutation">احتمال الطفرة لكل نسخة جينية</label><input id="mutation" type="number" min="0" max="0.02" step="0.001" value="0.001">
+      <label class="field-label" for="matingCost">علاوة جهد التزاوج</label><select id="matingCost"><option value="0">0 · ضبط بلا علاوة</option><option value="0.2">0.2</option><option value="0.4">0.4</option></select>
+      <label class="field-label" for="partnerCost">علاوة كل مساهم إضافي</label><select id="partnerCost"><option value="0">0</option><option value="0.04">0.04</option><option value="0.08">0.08</option></select>
+      <label class="field-label" for="recombination">احتمال إعادة التركيب</label><input id="recombination" type="number" min="0" max="0.5" step="0.01" value="0.05">
+      <label class="field-label" for="selection">شدة الانتخاب</label><input id="selection" type="number" min="0" max="0.2" step="0.01" value="0.04">
+      <label class="field-label" for="compatibility">التوافق بين الشركاء</label><select id="compatibility"><option value="within_strategy">ضمن طريقة التكاثر</option><option value="all_mixing">بين جميع طرق الخلط</option></select>
+      <label class="field-label" for="inheritance">وراثة 4 و8 مساهمين</label><select id="inheritance"><option value="locus_mosaic">فسيفساء مواضع جينية</option><option value="chromosome_partition">توزيع كروموسومات متوازن</option></select>
+      <label class="field-label" for="parasite">الضغط الطفيلي المبسّط</label><select id="parasite"><option value="none">بدون</option><option value="fixed">ثابت</option><option value="tracking">يتتبع الأليلات الشائعة</option></select>
+      <label class="field-label" for="seed">البذرة العشوائية</label><input id="seed" type="number" min="0" max="2147483647" value="20261026">
+    </details>
+    <button class="button primary full" id="startButton"><svg><use href="#i-play"/></svg>ابدأ تجربة جديدة</button>
+    <p class="local-note"><span class="tiny-dot"></span>التقارير والبيانات تبقى على جهازك</p>
+  </section>
+  <section class="panel disaster-panel">
+    <div class="panel-title"><span class="eyebrow warm">CONTROLLED DISTURBANCE</span><h2><svg><use href="#i-spark"/></svg>تدخّل بكارثة</h2></div>
+    <div class="disaster-types" id="disasterTypes">
+      <button data-kind="bottleneck"><svg><use href="#i-wave"/></svg><span>صدمة سكانية</span></button>
+      <button data-kind="drought"><svg><use href="#i-drop"/></svg><span>جفاف</span></button>
+      <button data-kind="combined" class="selected"><svg><use href="#i-spark"/></svg><span>مركّبة</span></button>
+    </div>
+    <label class="field-label" for="target">البيئة المستهدفة</label><select id="target"><option value="all">جميع البيئات</option><option value="static">البيئة الثابتة</option><option value="periodic">البيئة الدورية</option><option value="autocorrelated">البيئة المتقلبة</option></select>
+    <div class="range-label"><label for="mortality">شدة الوفيات المباشرة</label><output id="mortalityOutput">50%</output></div><input id="mortality" type="range" min="0" max="100" value="50">
+    <div class="range-label"><label for="resourceLoss">خسارة مخزون الغذاء</label><output id="resourceLossOutput">75%</output></div><input id="resourceLoss" type="range" min="0" max="100" value="75">
+    <div class="two-fields"><div><label class="field-label" for="disasterDuration">مدة الأثر <span>مليون سنة</span></label><input id="disasterDuration" type="number" min="0.01" step="0.5" value="2"></div><div><label class="field-label" for="renewal">تجدد الغذاء أثناءه</label><select id="renewal"><option value="0">0%</option><option value="0.25" selected>25%</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1">100%</option></select></div></div>
+    <button class="button danger full" id="disasterButton" disabled><svg><use href="#i-spark"/></svg>إطلاق الكارثة</button>
+    <div class="cooldown-note"><svg><use href="#i-info"/></svg><span id="cooldownText">كارثة واحدة فقط. فاصل 8 ملايين سنة بعد انتهائها.</span></div>
+  </section>
+</aside>
+<main class="main-content">
+  <section class="hero">
+    <div><div class="eyebrow">A LIVING EVOLUTION LABORATORY</div><h1>راقب الحياة وهي تتغيّر<span>.</span></h1><p>بيئات مختلفة. سبع طرق تكاثر. وأثر كل قرار أمامك.</p></div>
+    <span class="run-state" id="statusBadge"><i></i>جاهز للرصد</span>
+  </section>
+  <div class="clock-notice"><svg><use href="#i-info"/></svg><span><strong>زمن السيناريو افتراضي.</strong> ملايين السنين المعروضة ليست محاكاة معايرة لتاريخ الطبيعة. عدد التحديثات الفعلية ظاهر دائمًا.</span></div>
+  <section class="panel timeline-panel">
+    <div class="timeline-top"><div><span class="eyebrow">SCENARIO TIME</span><div class="year-display"><strong id="yearValue">0.0</strong><span>مليون سنة افتراضية <small id="yearTarget">من 100 مليون</small></span></div></div><div class="run-controls"><button class="icon-button" id="pauseButton" disabled aria-label="إيقاف مؤقت"><svg><use href="#i-pause"/></svg></button><button class="icon-button stop" id="stopButton" disabled aria-label="إنهاء التجربة"><svg><use href="#i-stop"/></svg></button><button class="button subtle" id="exportButton" disabled><svg><use href="#i-download"/></svg>حفظ وتصدير</button></div></div>
+    <progress id="runProgress" max="1" value="0" aria-label="تقدم التجربة"></progress>
+    <div class="timeline-bottom"><span id="tickLabel">0 / 1,000 تحديث فعلي</span><label class="speed-control" for="speed">سرعة العرض<input id="speed" type="range" min="1" max="60" value="20"><output id="speedOutput">20 تحديث/ث</output></label></div>
+    <div class="active-disaster" id="activeDisaster" hidden><svg><use href="#i-spark"/></svg><div><strong id="activeTitle">كارثة نشطة</strong><small id="activeDescription"></small></div><span class="live-tag">ACTIVE</span></div>
+  </section>
+  <section class="kpi-grid" aria-label="مؤشرات التجربة">
+    <div class="kpi"><span>السكان الأحياء</span><strong id="populationValue">—</strong><small id="populationHint">في البيئات الثلاث</small></div>
+    <div class="kpi"><span>مواليد مقبولون</span><strong id="birthsValue">—</strong><small>منذ بداية التجربة</small></div>
+    <div class="kpi"><span>وفيات الكوارث</span><strong id="deathsValue">—</strong><small>الخسائر المباشرة فقط</small></div>
+    <div class="kpi machine"><span>موارد عملية المحاكاة</span><strong><b id="memoryValue">—</b><em>MB</em></strong><small><span class="tiny-dot"></span>CPU <b id="cpuValue">—</b> · نواة واحدة</small></div>
+  </section>
+  <div class="section-heading"><h2>مرصد البيئات</h2><span><i class="pulse-dot"></i>اضغط بيئة لمتابعتها، أو فردًا لفحص جيناته</span></div>
+  <section class="world-grid" id="worldGrid" aria-label="البيئات الحية"></section>
+  <section class="panel chart-panel">
+    <div class="chart-heading"><div><span class="eyebrow">POPULATION DYNAMICS</span><h2 id="chartTitle">تغيّر السكان · البيئة الثابتة</h2></div><div class="segmented" id="chartModes"><button class="selected" data-mode="population">السكان</button><button data-mode="resources">الموارد</button></div></div>
+    <div class="chart-container"><canvas id="historyChart" aria-label="رسم تغير الأعداد والموارد عبر الزمن"></canvas><div class="empty-chart" id="chartEmpty">ابدأ التجربة لتشاهد البيانات الفعلية تتشكّل هنا</div></div>
+    <div class="legend" id="strategyLegend"></div>
+  </section>
+  <div class="bottom-grid">
+    <section class="panel strategy-panel"><div class="chart-heading"><h2>قراءة المجتمع</h2><span class="small-badge" id="focusBadge">البيئة الثابتة</span></div><table><thead><tr><th>طريقة التكاثر</th><th>الأفراد</th><th>التنوع الجيني</th><th>الأداء</th></tr></thead><tbody id="strategyRows"></tbody></table><p class="micro">اضغط طريقة تكاثر لعرض المواليد والوفيات والتوافق وبقية المقاييس.</p></section>
+    <section class="panel event-panel"><div class="chart-heading"><h2>سجل التدخلات</h2><span class="event-count" id="eventCount">0</span></div><div id="eventList" class="event-list"><div class="empty-events"><svg><use href="#i-wave"/></svg><p>كل كارثة إلها أثر… وسجل.</p><small>النوع والشدة والتوقيت تُحفظ لإعادة التجربة.</small></div></div></section>
+  </div>
+  <div class="export-ready" id="exportReady" hidden><div><strong>نسخة التجربة محفوظة محليًا</strong><small id="exportPath"></small></div><a class="button subtle" id="reportLink" target="_blank" rel="noopener">التقرير</a><a class="button primary" id="downloadLink">تنزيل الملفات</a></div>
+  <footer><span>Evolution Lab · مقارنة استكشافية، وليست ترتيبًا عامًا لطرق التكاثر</span><span>النقاط عينة بصرية من أفراد النموذج · توزيعها ليس نموذج هجرة</span></footer>
+</main>
+</div>
+<dialog id="resourceDialog" aria-labelledby="resourceTitle"><form method="dialog"><button class="dialog-close" aria-label="إغلاق">×</button></form><div class="dialog-icon"><svg><use href="#i-spark"/></svg></div><span class="eyebrow">BEFORE WE BEGIN</span><h2 id="resourceTitle">خلّينا نحسب الحمل أولًا.</h2><p>المحاكاة تستخدم المعالج والذاكرة، والعرض يستخدم موارد المتصفح. الدقة والسعة الأعلى تزيدان الحمل.</p><div class="estimate-grid" id="estimateGrid"></div><p class="dialog-mapping" id="mappingNotice"></p><label class="acknowledgement"><input id="resourceAck" type="checkbox">راجعت الإعدادات وفهمت أن التجربة ستستهلك موارد جهازي.</label><button class="button primary full" id="confirmStart" disabled><svg><use href="#i-play"/></svg>ابدأ المحاكاة</button></dialog>
+<dialog id="helpDialog" aria-labelledby="helpTitle"><form method="dialog"><button class="dialog-close" aria-label="إغلاق">×</button></form><span class="eyebrow">READ THE MODEL</span><h2 id="helpTitle">كيف تقرأ المختبر؟</h2><p>الأفراد والجينات والولادات والوفيات تُحسب فعليًا بمحرك Evolution Lab. مدة السيناريو تُوزّع على عدد التحديثات الذي تختاره؛ هذا مقياس عرض افتراضي يحتاج معايرة قبل اعتباره سنوات بيولوجية.</p><p>الكوارث لا تتداخل. يبدأ الفاصل البالغ 8 ملايين سنة بعد نهاية أثر الكارثة السابقة، ويُقرّب لأعلى بحسب دقة التحديث. الصدمة السكانية تقتل عند البداية؛ مدتها تمثل نافذة رصد الأثر. الجفاف يخفض الغذاء طوال المدة.</p><p>البيئات الثلاث حالات منفصلة دون هجرة. المساهمات من أربعة أو ثمانية آباء فرضية. هذه جلسة تفاعلية واحدة؛ لا تعطي وحدها ثقة إحصائية أو فائزًا عامًا.</p><p>يتم الحفظ تلقائيًا عند الانتهاء أو الإنهاء. زر التصدير يحفظ لقطة مع الجينات والسجلات والبذرة وتوقيت تدخلاتك. تتوقف المحاكاة مؤقتًا إذا انقطع اتصال الواجهة أكثر من 20 ثانية.</p></dialog>
+<dialog id="individualDialog" aria-labelledby="individualTitle"><form method="dialog"><button class="dialog-close" aria-label="إغلاق">×</button></form><span class="eyebrow">INDIVIDUAL INSPECTOR</span><h2 id="individualTitle">فرد من المحاكاة</h2><div id="individualContent"></div></dialog>
+<dialog id="strategyDialog" aria-labelledby="strategyTitle"><form method="dialog"><button class="dialog-close" aria-label="إغلاق">×</button></form><span class="eyebrow">REPRODUCTIVE PROGRAM METRICS</span><h2 id="strategyTitle">تفاصيل المجتمع</h2><div id="strategyContent"></div></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+</body></html>

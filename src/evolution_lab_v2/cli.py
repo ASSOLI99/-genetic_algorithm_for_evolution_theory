@@ -187,6 +187,9 @@ def main(argv=None):
     child.add_argument("--output", type=Path)
     child.add_argument("--plan-only", action="store_true")
     child.add_argument("--resume", action="store_true")
+    child = sub.add_parser("gui", help="Open the loopback-only interactive laboratory")
+    child.add_argument("--port", type=int, default=8765)
+    child.add_argument("--no-open", action="store_true")
     child = sub.add_parser("plan-time", help="Estimate calendar/workload requirements without simulation")
     child.add_argument("--config", type=Path, required=True)
     child.add_argument("--years", type=float, required=True)
@@ -196,6 +199,10 @@ def main(argv=None):
     child.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     try:
+        if args.command == "gui":
+            from .gui_server import serve
+            serve(args.port, not args.no_open)
+            return 0
         if args.command == "plan-time":
             from .planning import plan_time
             report = plan_time(read_config(args.config), args.years, args.years_per_step,

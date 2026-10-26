@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def source_hashes():
     files = sorted(Path(__file__).parent.glob("*.py"))
-    files += [ROOT / p for p in ("pyproject.toml", "requirements-dev.lock", "MODEL_ASSUMPTIONS.md", "EXPERIMENT_PROTOCOL.md", "ECO_PROTOCOL.md", "ECO_MODEL.md", "DISTURBANCE_PROTOCOL.md") if (ROOT / p).exists()]
+    files += sorted(p for p in (Path(__file__).parent / "web").glob("*") if p.is_file())
+    files += [ROOT / p for p in ("pyproject.toml", "requirements-dev.lock", "MODEL_ASSUMPTIONS.md", "EXPERIMENT_PROTOCOL.md", "ECO_PROTOCOL.md", "ECO_MODEL.md", "DISTURBANCE_PROTOCOL.md", "GUI_PROTOCOL.md") if (ROOT / p).exists()]
     return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
 
 

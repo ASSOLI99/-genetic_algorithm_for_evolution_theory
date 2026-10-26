@@ -43,6 +43,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Start-Experiment.ps1 -Prof
 
 ## فحوص إضافية منفصلة
 
+نسخة 0.3 تضيف كوارث سكانية، وجفافًا يخفض الغذاء، وحالة تجمع الاثنين، مع حالة بلا كوارث للمقارنة. احتمالات الوفيات المباشرة موحدة بين طرق التكاثر. التفاصيل والحدود في `DISTURBANCE_PROTOCOL.md`.
+
+```powershell
+# اعرض خطة الكوارث دون تشغيل:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Start-Experiment.ps1 -Profile catastrophe -PlanOnly
+
+# تجربة صغيرة: 16 إعدادًا × أربعة تكرارات × 400 خطوة:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Start-Experiment.ps1 -Profile catastrophe
+
+# حساب متطلبات 100 مليون سنة بافتراض سنة لكل خطوة؛ لا يشغّل المحاكاة:
+.\.venv\Scripts\python.exe -m evolution_lab_v2 plan-time --config configs\catastrophe_benchmark.json --years 100000000 --years-per-step 1 --replicates 8 --output reports\deep_time_plan.json
+```
+
+السنة لكل خطوة افتراض يحتاج معايرة، والخطوة ليست جيلًا وراثيًا. تغيير اسم الخطوة إلى ألف سنة لا يحاكي أحداث تلك السنوات. أداة التخطيط تعرض الحجم وحدود التشغيل؛ ولا تبدأ تجربة ضخمة. سجلات الكوارث في `catastrophes.csv` داخل كل تشغيل، والوفيات المباشرة مضافة لجدول المقارنة. حفظ نسخة 0.2 يُستكمل بكود 0.2 الأصلي، ونسخة 0.3 تحفظ حالة الجفاف وجدول الكوارث بصيغة جديدة.
+
 ```powershell
 # فحص تشغيل سريع، تم التحقق منه أثناء التطوير:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Start-Experiment.ps1 -Profile smoke

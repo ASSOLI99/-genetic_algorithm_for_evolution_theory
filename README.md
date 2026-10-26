@@ -2,6 +2,8 @@
 
 An auditable computational-evolution research prototype. V0.2 adds a tested demographic comparison of seven reproductive programs, overlapping cohorts, explicit resources, compatibility, facultative modifiers and two hypothetical 4/8-parent mechanisms. The small diploid analytical reference remains separate. No reproductive winner or empirical biological calibration is assumed.
 
+V0.3 adds strategy-neutral catastrophe mortality, drought stock/renewal shocks, independent onset schedules, exact drought/checkpoint replay and a calendar/workload planner. The base life cycle is extended by [DISTURBANCE_PROTOCOL.md](DISTURBANCE_PROTOCOL.md). Version 0.2 checkpoints require version 0.2 code; migration is not implicit.
+
 This release publishes source code, tests, configurations and methods. Generated runs, checkpoints, historical results, analysis reports and unpublished research notes remain local and are excluded by `.gitignore`. Analysis and reporting code is included so users can generate their own outputs.
 
 ## Run the prepared comparison
@@ -64,6 +66,21 @@ The audit checks preserved source against `baseline_sha256.json`. If the origina
 Output directories must be new; select a fresh name for repeated commands. Resume requires the same complete config, code/protocol hashes and runtime signature. Checkpoints contain binary genomes, full parentage, RNG state and sampled metrics. New output contains `metrics.csv`, `parentage.csv`, `summary.json`, `manifest.json` and `checkpoint.npz`. CSV parent IDs are qualified by generation; metric allele frequencies are JSON-compatible list fields. Progress is printed at checkpoint boundaries. A failure leaves the last atomic checkpoint available; resume into a new directory.
 
 ## Pilot sweep, analysis and benchmark
+
+For the new bounded catastrophe comparison (16 scenarios × four repeats × 400 census updates):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Start-Experiment.ps1 -Profile catastrophe -PlanOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Start-Experiment.ps1 -Profile catastrophe
+```
+
+To plan a hypothetical calendar horizon without launching it:
+
+```powershell
+.\.venv\Scripts\python.exe -m evolution_lab_v2 plan-time --config configs\catastrophe_benchmark.json --years 100000000 --years-per-step 1 --replicates 8 --output reports\deep_time_plan.json
+```
+
+The calendar mapping is a user assumption requiring biological calibration. The planner reports workload and two preallocated arrays' memory, not total memory or biological generations. It does not bypass the existing workload limits. Optional `--benchmark` uses only matching, complete source/runtime measurements for a labeled naive kernel extrapolation; it does not establish long-run feasibility. Read the extension protocol before interpreting catastrophe results or planning deep-time work.
 
 ```powershell
 .\.venv\Scripts\python.exe -m evolution_lab_v2 sweep --config configs\neutral_clone.json --grid configs\neutral_grid.json --replicates 4 --seed 20261020 --output runs\neutral_pilot

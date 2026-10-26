@@ -187,8 +187,24 @@ def main(argv=None):
     child.add_argument("--output", type=Path)
     child.add_argument("--plan-only", action="store_true")
     child.add_argument("--resume", action="store_true")
+    child = sub.add_parser("plan-time", help="Estimate calendar/workload requirements without simulation")
+    child.add_argument("--config", type=Path, required=True)
+    child.add_argument("--years", type=float, required=True)
+    child.add_argument("--years-per-step", type=float, required=True)
+    child.add_argument("--replicates", type=int, default=1)
+    child.add_argument("--benchmark", type=Path)
+    child.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     try:
+        if args.command == "plan-time":
+            from .planning import plan_time
+            report = plan_time(read_config(args.config), args.years, args.years_per_step,
+                               args.replicates, args.benchmark)
+            if args.output:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                write_json(args.output, report)
+            print(json.dumps(report, indent=2))
+            return 0
         if args.command == "experiment":
             from .eco_experiment import run_experiment
             specification = json.loads(args.config.read_text(encoding="utf-8"))

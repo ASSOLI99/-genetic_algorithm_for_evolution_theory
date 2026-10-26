@@ -13,7 +13,7 @@ import uuid
 import numpy as np
 
 from .artifacts import provenance, signature, write_json
-from .eco_config import EcoConfig, STRATEGIES
+from .eco_config import EcoConfig, STRATEGIES, MAX_BATCH_CENSUS_TICKS, MAX_BATCH_LOCUS_TICKS
 from .eco_io import load_checkpoint, save_checkpoint, simulate, write_outputs
 from .ecology import advance, initialize, state_digest
 
@@ -58,7 +58,7 @@ def plan_experiment(specification):
         scenarios.append({"id": f"S{index:03d}", "factors": factors, "config": cfg.to_dict()})
     updates = sum(s["config"]["capacity"]*s["config"]["steps"] for s in scenarios)*replicates
     locus_updates = sum(s["config"]["capacity"]*s["config"]["steps"]*sum(s["config"]["chromosome_lengths"]) for s in scenarios)*replicates
-    if updates > 50_000_000 or locus_updates > 1_000_000_000:
+    if updates > MAX_BATCH_CENSUS_TICKS or locus_updates > MAX_BATCH_LOCUS_TICKS:
         raise ValueError("Experiment exceeds bounded comparison workload (50m census ticks / 1b locus ticks)")
     runs = [{"path": f"{scenario['id']}_R{rep:03d}", "scenario": scenario["id"],
              "config": {**scenario["config"], "seed": rep_seed}}
@@ -67,6 +67,7 @@ def plan_experiment(specification):
             "experiment_kind": kind, "introduced_strategy": introduced,
             "specification": specification, "master_seed": seed, "replicate_seeds": seeds,
             "signature": signature(), "primary_endpoint": "introduced_cohort_threshold_crossing_probability" if kind == 'introduced_modifier' else "final_abundance_at_configured_horizon",
+            "extension_protocol": "DISTURBANCE_PROTOCOL.md",
             "pairing": "Founders and exogenous environment paired when their parameters agree; other streams diverge with demographics. Parasite tracking is endogenous.",
             "upper_census_ticks": updates, "upper_locus_ticks": locus_updates,
             "scenarios": scenarios, "runs": runs}
@@ -216,7 +217,8 @@ def benchmark(config, sizes, steps, repeats, output):
                 measurements.append({"kernel_seconds": kernel, "checkpoint_seconds": checkpoint,
                                      "output_seconds": io_seconds, "total_seconds": kernel+checkpoint+io_seconds,
                                      "artifact_bytes": sum(p.stat().st_size for p in directory.iterdir()),
-                                     "raw_newborns": sum(state.cumulative["raw_newborns"]), "terminal_population": len(state.ids)})
+                                     "raw_newborns": sum(state.cumulative["raw_newborns"]),
+                                     "terminal_population": len(state.ids), "terminal_tick": state.tick})
         tracemalloc.start()
         advance(initialize(cfg))
         peak = tracemalloc.get_traced_memory()[1]

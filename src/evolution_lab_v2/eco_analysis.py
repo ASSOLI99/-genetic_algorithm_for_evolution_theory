@@ -111,6 +111,7 @@ def analyze(directory, output=None, plots=True):
                      "censored_extinction_runs": len(samples)-extinctions,
                      "mean_mate_failures": float(np.mean([r["strategies"][name]["cumulative"]["mate_failures"] for r in samples])),
                      "mean_encounter_failures": float(np.mean([r["strategies"][name]["cumulative"]["encounter_failures"] for r in samples])),
+                     "mean_catastrophe_deaths": float(np.mean([r["strategies"][name]["cumulative"].get("catastrophe_deaths", 0) for r in samples])),
                      "mean_realized_newborns": float(np.mean([r["strategies"][name]["cumulative"]["realized_newborns"] for r in samples]))}
             strategies[name] = entry
             ci = entry["final_abundance"]["ci95"]
@@ -119,6 +120,7 @@ def analyze(directory, output=None, plots=True):
                          "count_ci_high": ci[1] if ci else None, "extinction_probability": entry["extinction_probability"],
                          "extinction_ci_low": entry["extinction_ci95"][0], "extinction_ci_high": entry["extinction_ci95"][1],
                          "mean_mate_failures": entry["mean_mate_failures"], "mean_realized_newborns": entry["mean_realized_newborns"]})
+            rows[-1]["mean_catastrophe_deaths"] = entry["mean_catastrophe_deaths"]
             events = [r["strategies"][name]["extinction_tick"] for r in samples]
             for tick in range(horizon+1):
                 losses = sum(t is not None and t <= tick for t in events)
@@ -133,6 +135,7 @@ def analyze(directory, output=None, plots=True):
         for contrast, p in zip(contrasts, adjusted):
             contrast["holm_p_within_scenario"] = p
         scenario_result = {"scenario": sid, "config": scenario["config"], "replicates": len(samples), "strategies": strategies,
+                        "mean_catastrophe_count": float(np.mean([r.get("catastrophe_count", 0) for r in samples])),
                         "paired_contrasts": contrasts, "population_extinction_probability": total_extinctions/len(samples),
                         "population_extinction_ci95": wilson(total_extinctions, len(samples))}
         if manifest.get('experiment_kind') == 'introduced_modifier':
@@ -216,6 +219,22 @@ def write_report(directory, report, manifest):
              "", "Final counts include extinct runs as zero. Population shares condition on total population survival; zero denominators remain undefined. Extinction times are exact discrete census times, with survivors censored at the configured horizon.",
              "", "Bootstrap intervals are descriptive and unadjusted. Paired sign-test p-values use Holm correction within a scenario, not across this exploratory scenario grid. Small replicate counts are imprecise.", ""]
     parts.extend([f"Primary endpoint: {report['primary_endpoint']}. Abundance plots are secondary for introduction experiments.", ""])
+    disturbance_html = ''
+    if any(s['config'].get('catastrophe_regime', 'none') != 'none' for s in report['scenarios']):
+        parts.extend(['## Catastrophe exposure', '',
+                      'Onsets are observed until the terminal state; early global extinction truncates exposure. Counts are not independent measures of hazard severity.', '',
+                      '| Scenario | Regime | Mean observed onsets |', '|---|---|---:|'])
+        exposure_rows = []
+        for scenario in report['scenarios']:
+            cells = [scenario['scenario'], scenario['config'].get('catastrophe_regime', 'none'),
+                     f"{scenario['mean_catastrophe_count']:.2f}"]
+            parts.append('| '+' | '.join(cells)+' |')
+            exposure_rows.append('<tr>'+''.join(f'<td>{html.escape(c)}</td>' for c in cells)+'</tr>')
+        parts.append('')
+        disturbance_html = ('<h2>Catastrophe exposure</h2><p>Observed until terminal state; early global extinction truncates exposure. '
+                            'Per-strategy catastrophe deaths are in comparison.csv; event details are in each run\'s catastrophes.csv.</p>'
+                            '<table><tr><th>Scenario</th><th>Regime</th><th>Mean observed onsets</th></tr>'
+                            +''.join(exposure_rows)+'</table>')
     introduction_html = ''
     if manifest.get('experiment_kind') == 'introduced_modifier':
         parts.extend(['| Scenario | Introductions | Threshold-crossing probability | Wilson 95% CI | Fixation probability |', '|---|---:|---:|---|---:|'])
@@ -245,7 +264,7 @@ def write_report(directory, report, manifest):
 <h1>Evolution Lab — {html.escape(report['name'])}</h1>
 <p dir="rtl">هاي نتائج استكشافية حسب فرضيات المحاكاة. اختلاف النتيجة بين السيناريوهات مهم، وما بنستنتج منها تفوّق دائم لأي طريقة تكاثر. عدد السكان النهائي يشمل الجماعات اللي انقرضت، والهوامش بتوضح عدم اليقين.</p>
 <p>{html.escape(parts[4])}</p><p>{html.escape(parts[6])}</p><p>{html.escape(parts[8])}</p>
-<p>Primary endpoint: {html.escape(report['primary_endpoint'])}</p>{introduction_html}
+<p>Primary endpoint: {html.escape(report['primary_endpoint'])}</p>{disturbance_html}{introduction_html}
 <p><a href="scenario_index.csv">Scenario factors</a> · <a href="comparison.csv">All counts and intervals</a> · <a href="analysis.json">Statistics and provenance</a></p>
 {''.join(f'<img src="{html.escape(name)}" alt="{html.escape(name)}">' for name in report['figures'])}
 <table><thead><tr><th>Scenario</th><th>Strategy</th><th>Mean final count</th><th>Descriptive 95% CI</th><th>Extinction probability</th></tr></thead><tbody>{''.join(table_rows)}</tbody></table></html>"""

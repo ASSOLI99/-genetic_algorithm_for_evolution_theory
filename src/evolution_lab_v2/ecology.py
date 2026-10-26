@@ -8,9 +8,10 @@ from .eco_config import EcoConfig, PARENTS, STRATEGIES
 from .eco_genetics import compatible_groups, inherit
 from .genetics import log_viability
 
-STREAMS = ("environment", "founders", "mortality", "mating", "genetics", "resources", "parasite", "modifier")
+STREAMS = ("environment", "founders", "mortality", "mating", "genetics", "resources", "parasite", "modifier",
+           "catastrophe_schedule", "catastrophe_mortality")
 ARRAYS = ("genomes", "ids", "strategy", "birth_tick", "mating_type", "mix_probability")
-COUNTERS = ("survival_deaths", "maintenance_deaths", "attempts", "mate_failures", "encounter_failures",
+COUNTERS = ("survival_deaths", "catastrophe_deaths", "maintenance_deaths", "attempts", "mate_failures", "encounter_failures",
             "fallback_births", "raw_newborns", "funded_newborns", "resource_rejected",
             "capacity_adult_deaths", "capacity_newborn_deaths", "realized_newborns",
             "sexual_newborns", "mixed_cohort_newborns", "selected_parent_slots", "positive_contributor_slots",
@@ -41,6 +42,9 @@ class EcoState:
     extinct: dict = field(default_factory=dict)
     established: dict = field(default_factory=dict)
     cumulative: dict = field(default_factory=dict)
+    catastrophe_schedule: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=bool))
+    catastrophe_until: int = 0
+    catastrophe_events: list[dict] = field(default_factory=list)
 
 
 def counts(state):
@@ -134,6 +138,10 @@ def initialize(config):
     parasite = rngs["parasite"].integers(0, 2, max(1, config.loci//4), dtype=np.uint8)
     state = EcoState(config, 0, genomes, np.arange(n, dtype=np.int64), strategy, -ages, types, mix,
                      environment, parasite, config.initial_resources, n, rngs)
+    # Exogenous onset draws are independent of demographic mortality draws.
+    # Appending streams leaves the previous eight stream identities unchanged.
+    state.catastrophe_schedule = (rngs["catastrophe_schedule"].random(config.steps) < config.catastrophe_probability
+                                  if config.catastrophe_regime != "none" else np.zeros(config.steps, dtype=bool))
     state.founders = [{"id": int(i), "birth_tick": int(b), "strategy": STRATEGIES[int(s)], "mating_type": int(mt)}
                       for i, b, s, mt in zip(state.ids, state.birth_tick, state.strategy, state.mating_type)]
     state.cumulative = {name: [0.0]*len(STRATEGIES) for name in COUNTERS}
@@ -184,9 +192,33 @@ def step(state):
     scores = scores[live]
 
     resources_before = state.resources
+    catastrophe_loss = 0.0
+    if state.catastrophe_schedule[state.tick]:
+        before_counts = counts(state)
+        deaths = np.zeros(len(STRATEGIES), dtype=np.int64)
+        if cfg.catastrophe_regime in ("bottleneck", "combined"):
+            survivors = state.rngs["catastrophe_mortality"].random(len(state.ids)) >= cfg.catastrophe_mortality
+            deaths = np.bincount(state.strategy[~survivors], minlength=len(STRATEGIES))
+            tally("catastrophe_deaths", state.strategy[~survivors])
+            subset(state, survivors)
+            scores = scores[survivors]
+        if cfg.catastrophe_regime in ("drought", "combined"):
+            catastrophe_loss = state.resources*cfg.catastrophe_resource_loss
+            state.resources -= catastrophe_loss
+            # Overlapping droughts extend the end, without multiplying factors.
+            state.catastrophe_until = max(state.catastrophe_until, state.tick+cfg.catastrophe_duration)
+        state.events.append({"tick": state.tick+1, "event": "catastrophe", "strategy": "all"})
+        state.catastrophe_events.append({"tick": state.tick+1, "regime": cfg.catastrophe_regime,
+                                        "population_before": int(before_counts.sum()), "deaths": int(deaths.sum()),
+                                        "counts_before": before_counts.tolist(), "deaths_by_strategy": deaths.tolist(),
+                                        "stock_before": resources_before, "stock_lost": catastrophe_loss,
+                                        "stock_after_shock": state.resources,
+                                        "renewal_depressed_until_exclusive": state.catastrophe_until})
     renewal = cfg.resource_renewal
     if cfg.environment != "static":
         renewal *= 1 + cfg.seasonal_amplitude*np.sin(2*np.pi*state.tick/cfg.environment_period)
+    renewal_multiplier = cfg.catastrophe_renewal_factor if state.tick < state.catastrophe_until else 1.0
+    renewal *= renewal_multiplier
     available = min(cfg.resource_capacity, state.resources+renewal)
     overflow = max(0.0, state.resources+renewal-cfg.resource_capacity)
     maintenance_slots = len(state.ids) if cfg.maintenance_cost == 0 else min(len(state.ids), int(available/cfg.maintenance_cost))
@@ -320,7 +352,7 @@ def step(state):
     state.tick += 1
     end_counts = counts(state)
     for s, name in enumerate(STRATEGIES):
-        balance = start_counts[s]-stats["survival_deaths"][s]-stats["maintenance_deaths"][s]-stats["capacity_adult_deaths"][s]+stats["realized_newborns"][s]
+        balance = start_counts[s]-stats["survival_deaths"][s]-stats["catastrophe_deaths"][s]-stats["maintenance_deaths"][s]-stats["capacity_adult_deaths"][s]+stats["realized_newborns"][s]
         if balance != end_counts[s]:
             raise ValueError("Population accounting violated")
         row = {"tick": state.tick, "strategy": name, "start": int(start_counts[s]), "end": int(end_counts[s])}
@@ -328,10 +360,11 @@ def step(state):
             row[counter] = float(stats[counter][s]) if counter in ("effort_spent", "offspring_resources") else int(stats[counter][s])
             state.cumulative[counter][s] += float(stats[counter][s])
         state.ledger.append(row)
-    residual = resources_before+renewal-overflow-maintenance_spent-offspring_spent-state.resources
+    residual = resources_before-catastrophe_loss+renewal-overflow-maintenance_spent-offspring_spent-state.resources
     if abs(residual) > 1e-7:
         raise ValueError("Resource accounting violated")
     state.resource_ledger.append({"tick": state.tick, "before": resources_before, "renewal": float(renewal),
+                                  "catastrophe_loss": catastrophe_loss, "renewal_multiplier": renewal_multiplier,
                                   "overflow": float(overflow), "maintenance": maintenance_spent,
                                   "offspring": offspring_spent, "after": state.resources})
     update_events(state)

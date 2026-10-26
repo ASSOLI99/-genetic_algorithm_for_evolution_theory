@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('standard', 'smoke', 'isolated', 'invasion')]
+    [ValidateSet('standard', 'smoke', 'isolated', 'invasion', 'catastrophe')]
     [string]$Profile = 'standard',
     [string]$Output = '',
     [switch]$Resume,
@@ -23,8 +23,9 @@ try {
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import sys
+import tomllib
 requirements = [line.split('==') for line in Path('requirements-dev.lock').read_text().splitlines() if line and not line.startswith('#')]
-requirements.append(['evolution-lab-v2', '0.2.0'])
+requirements.append(['evolution-lab-v2', tomllib.loads(Path('pyproject.toml').read_text())['project']['version']])
 problems = []
 for package, expected in requirements:
     try:
@@ -46,6 +47,7 @@ sys.exit(bool(problems))
         smoke = 'comparison_smoke.json'
         isolated = 'comparison_isolated.json'
         invasion = 'invasion_facultative.json'
+        catastrophe = 'catastrophe_pilot.json'
     }[$Profile]
     $configPath = Join-Path $projectRoot ('configs\' + $configName)
     & $pythonPath -m evolution_lab_v2 experiment --config $configPath --plan-only

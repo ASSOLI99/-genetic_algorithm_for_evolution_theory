@@ -26,6 +26,14 @@ The policy is enforced under a backend lock, not only by disabling buttons. Doub
 
 Inactive intervention effects are normalized explicitly: drought has zero direct mortality; bottlenecks have zero food loss and renewal multiplier one. The UI event list shows only mechanisms actually applied. The underlying drought-induced starvation, if any, remains a separate maintenance death. Detailed strategy inspection exposes all recorded observation metrics and cumulative reproductive, mortality, effort and resource counters; it is not restricted to the four headline columns.
 
+## Survival and extinction display
+
+Each strategy row displays its observed persistence from session start, in actual census updates and mapped million scenario-display years. Extinction uses the engine's first recorded zero census (`extinction_tick`), not the chart resolution or five-update metric sampling. Conversion is `extinction_tick * duration_million_years / steps`. Timing remains discrete to a census update and the scenario clock remains uncalibrated. The exact update is always shown even when the calendar label is rounded for display.
+
+Living strategies display an ongoing status during active/paused runs and “alive at observation end” after completion/stop. Their duration is a lower bound (`≥`), not an invented extinction time; statistically these observations are right-censored. Early stops use the observed tick, not the full planned horizon. Empty observations without an extinction record are marked unknown. Detailed strategy inspection repeats these distinctions. A separate “export survival” CSV includes all environments, observed ticks/calendar durations, event-observed flags and blank extinction fields for living strategies, with an explicit uncalibrated-clock field. This is a descriptive per-session table, not a survival analysis across independent replicates.
+
+Reconnecting/reloading the page restores the running server session's settings once, so its display-clock mapping is visible instead of the page's initial defaults. Later edits to prepare a new experiment do not change timing calculations for the currently observed session. This feature only reads the already recorded extinction events and does not change model behavior or restart the in-memory session.
+
 ## Persistence and reproducibility
 
 The session runs in memory while active. Manual export and normal completion/stop save all environment checkpoints, metrics, per-step population/resource/catastrophe ledgers, founders and extinction events, plus a descriptive HTML report, history JSON and a versioned intervention manifest. Full per-offspring parentage is disabled to bound memory and is not advertised as retained. Browser reload reconnects to the same running server session; process crashes are not yet automatically recoverable from an active in-memory session.

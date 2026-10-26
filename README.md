@@ -8,7 +8,11 @@ This release publishes source code, tests, configurations and methods. Generated
 
 ## Live graphical laboratory
 
-Version 0.4 adds an Arabic local dashboard with three live environment panels, population/resource charts, actual individual/genome inspection, detailed strategy metrics, pause/resume/speed controls and manual catastrophes. Start from the checkout:
+Version 0.4 adds an Arabic local dashboard with three live environment panels, population/resource charts, actual individual/genome inspection, detailed strategy metrics, pause/resume/speed controls and manual catastrophes.
+
+The community table includes exact extinction updates and mapped scenario times, with ongoing/censored observations for surviving strategies. A separate survival CSV export covers all environments. Frontend survival-contract checks run with `node --test tests/gui_survival.test.cjs` when Node.js is available; Node is not needed to run the dashboard.
+
+Start from the checkout:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Start-GUI.ps1

@@ -11,6 +11,9 @@ import pytest
 
 from evolution_lab_v2.gui_session import LabSession, SessionError, Settings, fingerprint, replay_session
 from evolution_lab_v2.gui_server import LabServer
+from dataclasses import replace
+from evolution_lab_v2 import ecology
+from evolution_lab_v2.eco_config import EcoConfig, STRATEGIES
 
 
 def make_session(tmp_path, **kwargs):
@@ -209,3 +212,107 @@ def test_http_full_live_flow_and_export(http_lab):
     assert request(http_lab,saved['download'])[1][:2]==b'PK'
     assert b'<table>' in request(http_lab,saved['report'])[1]
     assert request(http_lab,'/api/control',{'action':'stop'})[0]==200
+
+
+def test_isolated_worlds_have_equal_budgets_and_paired_founders(tmp_path):
+    lab=make_session(tmp_path,comparison_mode='isolated',initial_population=32,
+                     resource_capacity=400,initial_resources=300,resource_renewal=40)
+    assert len(lab.worlds)==21
+    reference=lab.worlds['static__clone']
+    for environment in ('static','periodic','autocorrelated'):
+        states=[lab.worlds[environment+'__'+s] for s in STRATEGIES]
+        for i,state in enumerate(states):
+            assert len(state.ids)==32 and np.all(state.strategy==i)
+            assert state.config.capacity==168
+            assert (state.config.resource_capacity,state.resources,state.config.resource_renewal)==(400,300,40)
+            np.testing.assert_array_equal(state.genomes,reference.genomes)
+            np.testing.assert_array_equal(state.birth_tick,reference.birth_tick)
+            np.testing.assert_array_equal(state.mating_type,reference.mating_type)
+            np.testing.assert_array_equal(state.environment,states[0].environment)
+    estimate=lab.settings.estimate()
+    assert estimate['worlds']==21 and estimate['total_initial_population']==672
+    assert estimate['total_initial_resources']==6300
+    assert estimate['upper_individual_updates']==100*168*21
+
+
+def test_competition_defaults_preserve_original_engine_configuration(tmp_path):
+    lab=make_session(tmp_path)
+    control=ecology.initialize(EcoConfig(seed=42,steps=100,capacity=168,initial_counts=(16,)*7,
+        record_parentage=False,log_every=5,catastrophe_regime='combined',catastrophe_probability=0,
+        resource_capacity=300.0,initial_resources=300.0,resource_renewal=75.0))
+    lab.advance_ticks(5);ecology.advance(control,until=5)
+    assert fingerprint(lab.worlds['static'])==fingerprint(control)
+
+
+def test_isolated_worlds_cannot_share_food_or_recruit_other_programs(tmp_path):
+    lab=make_session(tmp_path/'a',comparison_mode='isolated')
+    control=make_session(tmp_path/'b',comparison_mode='isolated')
+    starving=lab.worlds['static__clone']
+    starving.resources=0;starving.config=replace(starving.config,resource_renewal=0)
+    lab.advance_ticks(4);control.advance_ticks(4)
+    assert len(starving.ids)==0
+    for name,state in lab.worlds.items():
+        if name=='static__clone':continue
+        assert fingerprint(state)==fingerprint(control.worlds[name])
+        expected=STRATEGIES.index(name.split('__')[1])
+        assert np.all(state.strategy==expected)
+
+
+def test_isolation_enforces_identical_global_intervention_and_existing_spacing(tmp_path):
+    lab=make_session(tmp_path,comparison_mode='isolated',initial_resources=300)
+    with pytest.raises(SessionError) as caught:lab.catastrophe({'target':'static'})
+    assert caught.value.code=='isolated_global_event'
+    event=lab.catastrophe({'target':'all','kind':'combined','duration_million_years':'1','mortality':.4})
+    assert event['duration_ticks']==5 and event['next_allowed_tick']==45
+    lab.advance_ticks(1)
+    for state in lab.worlds.values():
+        assert len(state.catastrophe_events)==1
+        applied=state.catastrophe_events[0]
+        assert applied['tick']==1 and applied['regime']=='combined'
+        assert applied['stock_lost']==225
+        assert state.config.catastrophe_mortality==.4
+    with pytest.raises(SessionError) as caught:lab.catastrophe({})
+    assert caught.value.code=='catastrophe_active'
+    lab.advance_ticks(4)
+    with pytest.raises(SessionError) as caught:lab.catastrophe({})
+    assert caught.value.code=='catastrophe_cooldown'
+
+
+@pytest.mark.parametrize('values',[
+    {'comparison_mode':'unknown'}, {'comparison_mode':'isolated','compatibility_scope':'all_mixing'},
+    {'initial_population':25,'capacity':168}, {'initial_population':True}, {'initial_population':0},
+    {'comparison_mode':'isolated','initial_population':169,'capacity':168},
+    {'initial_resources':401,'resource_capacity':400}, {'resource_capacity':0}, {'resource_renewal':float('nan')},
+    {'comparison_mode':'isolated','steps':1800},
+])
+def test_isolation_and_common_budget_validation(values):
+    with pytest.raises(SessionError):Settings.parse(values)
+
+
+def test_ledger_budget_counts_all_twenty_one_worlds():
+    estimate=Settings.parse({'comparison_mode':'isolated','steps':1700}).estimate()
+    assert estimate['retained_ledger_rows']==249900
+    assert Settings.parse({'steps':5000}).estimate()['retained_ledger_rows']==105000
+
+
+def test_isolated_export_replay_and_report_risk_sets(tmp_path):
+    lab=make_session(tmp_path,comparison_mode='isolated')
+    lab.catastrophe({'kind':'combined','duration_million_years':'1','mortality':.2})
+    lab.advance_ticks(12)
+    saved=lab.export();folder=Path(saved['directory'])
+    manifest=json.loads((folder/'session.json').read_text())
+    assert manifest['schema']=='interactive-2' and len(manifest['world_layout'])==21
+    restored=replay_session(folder/'session.json')
+    for name,state in lab.worlds.items():
+        assert fingerprint(state)==fingerprint(restored.worlds[name])
+        assert state.ledger==restored.worlds[name].ledger
+    report=(folder/'REPORT.html').read_text(encoding='utf-8')
+    assert report.count('<tr>')==44  # 21 world summaries + 21 at-risk program rows + two headers
+    assert 'None' not in report
+    restart=LabSession(lab.output_root)
+    assert restart.exports[saved['id']].is_file()
+
+
+def test_export_registry_ignores_traversal_and_wrong_prefix(tmp_path):
+    (tmp_path/'.gui-export-index.json').write_text(json.dumps({'a'*32:'../secrets.zip','b'*32:'gui_20261026_120000_aaaaaaaa.zip'}))
+    assert not LabSession(tmp_path).exports

@@ -6,6 +6,7 @@ import html
 import hashlib
 import json
 from pathlib import Path
+import re
 import threading
 import time
 import uuid
@@ -22,6 +23,7 @@ ENVIRONMENTS = {'static': 'بيئة ثابتة', 'periodic': 'بيئة دوري�
 LABELS = ('لاجنسي', 'جنسي بأبوين', 'اختياري', 'دوري', 'عند الضغط', 'أربعة آباء', 'ثمانية آباء')
 COLORS = ('#63e6be', '#6ca7ff', '#ffd166', '#bd9bff', '#ff9b70', '#f58abb', '#54cfdb')
 COOLDOWN_YEARS = Decimal(8_000_000)
+MAX_GUI_LEDGER_ROWS = 250_000
 
 
 class SessionError(ValueError):
@@ -55,6 +57,11 @@ class Settings:
     capacity: int = 336
     seed: int = 20261026
     environments: tuple = ('static', 'periodic', 'autocorrelated')
+    comparison_mode: str = 'competition'
+    initial_population: int | None = None
+    resource_capacity: float | None = None
+    initial_resources: float | None = None
+    resource_renewal: float | None = None
     mutation_rate: float = .001
     mating_cost: float = 0.0
     extra_parent_cost: float = 0.0
@@ -80,6 +87,17 @@ class Settings:
             raise SessionError('work_limit', 'اختر سعة 168 أو 336 أو 672 فردًا لكل بيئة.')
         if type(cfg.seed) is not int or not 0 <= cfg.seed <= 2**31-1:
             raise SessionError('invalid_seed', 'البذرة يجب أن تكون عددًا صحيحًا من 0 إلى 2147483647.')
+        if cfg.comparison_mode not in ('competition', 'isolated'):
+            raise SessionError('invalid_mode', 'اختر منافسة مشتركة أو عوالم منفصلة.')
+        maximum_initial = cfg.capacity if cfg.comparison_mode == 'isolated' else cfg.capacity//7
+        if cfg.initial_population is not None and (type(cfg.initial_population) is not int or not 1 <= cfg.initial_population <= maximum_initial):
+            raise SessionError('invalid_initial', f'عدد البداية لكل طريقة يجب أن يكون بين 1 و{maximum_initial}.')
+        if cfg.comparison_mode == 'isolated' and cfg.compatibility_scope != 'within_strategy':
+            raise SessionError('isolated_compatibility', 'الشركاء في وضع العزلة من داخل العالم نفسه فقط.')
+        for name in ('resource_capacity', 'initial_resources', 'resource_renewal'):
+            value = getattr(cfg, name)
+            if value is not None:
+                finite_number(value, 'الموارد', 0, 100000)
         env = cfg.environments
         if not isinstance(env, (tuple, list)) or not env or len(env) > 3 or any(type(e) is not str or e not in ENVIRONMENTS for e in env) or len(set(env)) != len(env):
             raise SessionError('invalid_environments', 'اختر بيئة واحدة على الأقل دون تكرار.')
@@ -94,9 +112,12 @@ class Settings:
             cfg.configs()
         except ValueError as exc:
             raise SessionError('work_limit', 'الحجم يتجاوز ميزانية المحرك؛ قلّل الدقة أو سعة البيئة.') from exc
-        work = cfg.steps*cfg.capacity*len(cfg.environments)
+        world_count = len(cfg.environments)*(7 if cfg.comparison_mode == 'isolated' else 1)
+        work = cfg.steps*cfg.capacity*world_count
         if work > MAX_BATCH_CENSUS_TICKS or work*16 > MAX_BATCH_LOCUS_TICKS:
             raise SessionError('work_limit', 'الحجم الكلي يتجاوز ميزانية المحرك.')
+        if cfg.steps*world_count*7 > MAX_GUI_LEDGER_ROWS:
+            raise SessionError('log_limit', 'سجل العوالم يتجاوز ميزانية الذاكرة؛ قلّل عدد التحديثات الفعلية.')
         return cfg
 
     @property
@@ -111,18 +132,33 @@ class Settings:
     def million_years_at(self, tick):
         return float(Decimal(self.duration_million_years)*tick/self.steps)
 
-    def configs(self):
-        initial = max(8, self.capacity//(7*3)*2)
+    @property
+    def starting_count(self):
+        return self.initial_population if self.initial_population is not None else max(8, self.capacity//(7*3)*2)
+
+    def resource_budget(self):
         scale = self.capacity/336
-        return {name: EcoConfig(seed=self.seed, steps=self.steps, capacity=self.capacity,
-                    initial_counts=(initial,)*7, environment=name, mutation_rate=self.mutation_rate,
+        cap = self.resource_capacity if self.resource_capacity is not None else 600*scale
+        return {'resource_capacity': cap,
+                'initial_resources': self.initial_resources if self.initial_resources is not None else cap,
+                'resource_renewal': self.resource_renewal if self.resource_renewal is not None else 150*scale}
+
+    def configs(self):
+        result = {}
+        for environment in self.environments:
+            programs = range(7) if self.comparison_mode == 'isolated' else (None,)
+            for program in programs:
+                initial = tuple(self.starting_count if program is None or i == program else 0 for i in range(7))
+                name = environment if program is None else environment+'__'+STRATEGIES[program]
+                result[name] = EcoConfig(seed=self.seed, steps=self.steps, capacity=self.capacity,
+                    initial_counts=initial, environment=environment, mutation_rate=self.mutation_rate,
                     mating_cost=self.mating_cost, extra_parent_cost=self.extra_parent_cost,
                     recombination_rate=self.recombination_rate, selection_coefficient=self.selection_coefficient,
                     compatibility_scope=self.compatibility_scope, multiparent_mechanism=self.multiparent_mechanism,
                     parasite=self.parasite,
                     record_parentage=False, log_every=5, catastrophe_regime='combined',
-                    catastrophe_probability=0, resource_capacity=600*scale,
-                    initial_resources=600*scale, resource_renewal=150*scale) for name in self.environments}
+                    catastrophe_probability=0, **self.resource_budget())
+        return result
 
     def to_dict(self):
         return {name: list(value) if name == 'environments' else value for name, value in self.__dict__.items()}
@@ -131,11 +167,15 @@ class Settings:
         configs = self.configs()
         work = self.steps*self.capacity*len(configs)
         return {'settings': self.to_dict(), 'actual_steps': self.steps, 'worlds': len(configs),
-                'initial_per_strategy': configs[self.environments[0]].initial_counts[0],
+                'initial_per_strategy': self.starting_count,
+                'total_initial_population': sum(sum(c.initial_counts) for c in configs.values()),
+                'resource_budget_per_world': self.resource_budget(),
+                'total_initial_resources': len(configs)*self.resource_budget()['initial_resources'],
+                'retained_ledger_rows': self.steps*len(configs)*7,
                 'upper_individual_updates': work, 'upper_locus_updates': work*16,
                 'scenario_million_years_per_update': float(Decimal(self.duration_million_years)/self.steps),
                 'cooldown_steps': self.ticks_for_years(COOLDOWN_YEARS),
-                'load': 'مرتفع' if work > 4_000_000 else 'متوسط' if work > 1_000_000 else 'خفيف',
+                'load': 'مرتفع' if work > 4_000_000 or self.steps*len(configs)*7 > 150000 else 'متوسط' if work > 1_000_000 else 'خفيف',
                 'calendar_mapping': 'زمن سيناريو افتراضي، غير معاير على سنوات بيولوجية حقيقية.',
                 'resource_notice': 'المحاكاة تستخدم المعالج والذاكرة، والعرض يستهلك موارد المتصفح. زيادة الدقة والسكان ترفع الحمل. يمكنك الإيقاف المؤقت أو الإنهاء.'}
 
@@ -191,6 +231,22 @@ class LabSession:
         self.thread = None
         self.stop_signal = threading.Event()
         self.exports = {}
+        index = self.output_root/'.gui-export-index.json'
+        if index.is_file():
+            try:
+                saved = json.loads(index.read_text(encoding='utf-8'))
+                if not isinstance(saved, dict):
+                    raise ValueError('Invalid export index')
+                for identity, filename in saved.items():
+                    if not isinstance(filename, str) or not re.fullmatch(r'[0-9a-f]{32}', identity):
+                        continue
+                    if not re.fullmatch(r'gui_\d{8}_\d{6}_'+identity[:8]+r'\.zip', filename):
+                        continue
+                    archive = (self.output_root/filename).resolve()
+                    if archive.parent == self.output_root.resolve() and archive.is_file() and (archive.with_suffix('')/'REPORT.html').is_file():
+                        self.exports[identity] = archive
+            except (ValueError, OSError):
+                pass
         self.latest_export = None
         self._cpu = (time.monotonic(), time.process_time(), 0.0)
         self.session_id = None
@@ -292,6 +348,8 @@ class LabSession:
             if not isinstance(values, dict) or set(values)-allowed:
                 raise SessionError('invalid_catastrophe', 'إعدادات كارثة غير معروفة.')
             kind, target = values.get('kind', 'combined'), values.get('target', 'all')
+            if self.settings.comparison_mode == 'isolated' and target != 'all':
+                raise SessionError('isolated_global_event', 'في المقارنة المنفصلة تُطبّق الكارثة على جميع العوالم بالتساوي.')
             if kind not in ('bottleneck', 'drought', 'combined') or target not in (*self.worlds, 'all'):
                 raise SessionError('invalid_catastrophe', 'نوع الكارثة أو البيئة غير صالح.')
             duration = decimal_value(values.get('duration_million_years', '2'), 'مدة الكارثة', Decimal('.01'))
@@ -336,6 +394,7 @@ class LabSession:
                 for i, row in enumerate(metrics):
                     row['cumulative'] = {key: values[i] for key, values in state.cumulative.items()}
                     row['extinction_tick'] = state.extinct.get(row['strategy'])
+                    row['initial_count'] = state.config.initial_counts[i]
                 n = len(state.ids)
                 p = state.genomes.mean(axis=(0, 1)) if n else None
                 scores = performance(state)
@@ -343,8 +402,12 @@ class LabSession:
                 dots = [{'id': int(state.ids[i]), 'strategy': int(state.strategy[i]),
                          'age': int(state.tick-state.birth_tick[i]), 'score': float(scores[i]),
                          'genome': ''.join(str(int(b)) for b in state.genomes[i].ravel())} for i in sample]
-                worlds.append({'id': name, 'label': ENVIRONMENTS[name], 'population': n,
+                program = next((i for i, count in enumerate(state.config.initial_counts) if count), None) if self.settings.comparison_mode == 'isolated' else None
+                label = ENVIRONMENTS[state.config.environment]+(' · '+LABELS[program] if program is not None else '')
+                worlds.append({'id': name, 'label': label, 'environment': state.config.environment,
+                    'strategy_index': program, 'initial_population': sum(state.config.initial_counts), 'population': n,
                     'capacity': state.config.capacity, 'resources': state.resources,
+                    'initial_resources': state.config.initial_resources, 'resource_renewal': state.config.resource_renewal,
                     'resource_capacity': state.config.resource_capacity, 'strategies': metrics,
                     'diversity': float(np.mean(2*p*(1-p))) if n else None,
                     'births': int(sum(state.cumulative['realized_newborns'])),
@@ -381,7 +444,9 @@ class LabSession:
             destination.mkdir()
             save_checkpoint(destination/'checkpoint.npz', state)
             summaries[name] = write_outputs(destination, state, {'provenance': provenance(), 'interactive': True})
-        manifest = {'schema': 'interactive-1', 'settings': self.settings.to_dict(),
+        manifest = {'schema': 'interactive-2', 'settings': self.settings.to_dict(),
+            'world_layout': {name: {'environment': state.config.environment, 'initial_counts': list(state.config.initial_counts),
+                                   'capacity': state.config.capacity, 'resources': {k: getattr(state.config,k) for k in ('initial_resources','resource_capacity','resource_renewal')}} for name,state in self.worlds.items()},
             'clock': 'Scenario display clock; not empirically calibrated biological years',
             'cooldown': 'At least 8,000,000 scenario years after the previous disaster ends; rounded up to a full update',
             'status': self.status, 'tick': self.tick, 'actions': self.actions,
@@ -397,38 +462,59 @@ class LabSession:
                 if path.is_file():
                     stream.write(path, path.relative_to(folder))
         self.exports[export_id] = archive
+        write_json(self.output_root/'.gui-export-index.json', {identity: path.name for identity, path in self.exports.items()})
         self.latest_export = {'id': export_id, 'directory': str(folder), 'download': f'/api/download/{export_id}',
                               'report': f'/api/report/{export_id}', 'tick': self.tick}
         return dict(self.latest_export)
 
     def _write_report(self, folder, summaries):
         rows = []
+        totals = []
         for name, summary in summaries.items():
+            config = summary['config']
+            environment = ENVIRONMENTS[config['environment']]
+            programs = [LABELS[i] for i, n in enumerate(config['initial_counts']) if n]
+            label = environment+(' · '+programs[0] if len(programs) == 1 else '')
+            totals.append('<tr>'+''.join(f'<td>{html.escape(str(v))}</td>' for v in
+                (label, sum(config['initial_counts']), config['capacity'], config['initial_resources'],
+                 config['resource_renewal'], summary['total_population'], sum(e['population']>0 for e in summary['strategies'].values())))+'</tr>')
             for label, strategy in zip(LABELS, STRATEGIES):
                 entry = summary['strategies'][strategy]
-                cells = (ENVIRONMENTS[name], label, entry['population'], int(entry['cumulative']['realized_newborns']),
-                         int(entry['cumulative']['catastrophe_deaths']), entry['extinction_tick'])
+                if not entry['initial_count']:
+                    continue
+                event = entry['extinction_tick']
+                cells = (environment, label, entry['population'], int(entry['cumulative']['realized_newborns']),
+                         int(entry['cumulative']['catastrophe_deaths']), event if event is not None else 'باقٍ عند نهاية الرصد',
+                         self.settings.million_years_at(event if event is not None else self.tick))
                 rows.append('<tr>'+''.join(f'<td>{html.escape(str(v))}</td>' for v in cells)+'</tr>')
         document = ('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>Evolution Lab — جلسة تفاعلية</title>'
             '<style>body{font:16px Tahoma,Arial;max-width:1100px;margin:40px auto;padding:20px;line-height:1.8;color:#172333}'
             'table{border-collapse:collapse;width:100%}td,th{padding:10px;border:1px solid #ccd6df}th{background:#eef4f7}</style>'
             '<h1>Evolution Lab — سجل تجربة تفاعلية</h1>'
+            f'<p>تصميم التجربة: {"عوالم منفصلة" if self.settings.comparison_mode == "isolated" else "منافسة مشتركة"}؛ العوالم: {len(self.worlds)}.</p>'
             f'<p>التحديثات المنفذة: {self.tick} من {self.settings.steps}؛ زمن السيناريو المعروض: {self.settings.million_years_at(self.tick):g} مليون سنة.</p>'
             '<p>الزمن افتراضي وغير معاير بيولوجيًا. هذه تجربة واحدة بتدخلات يدوية مسجلة؛ لا تمثل تكرارات مستقلة أو دليل تفوق إحصائي. '
             'الميكانيكيات ذات 4/8 مساهمين افتراضية. النقاط في الواجهة عينة من أفراد المحاكاة وليست خريطة مكانية أو نموذج هجرة.</p>'
             f'<p>الكوارث المسجلة: {len(self.actions)}. كل ملفات الأرقام والجينات والحفظ والبذور موجودة في مجلدات البيئات. '
             'session.json يسجل المدخلات والتوقيت وبصمات المصدر لإعادة التجربة؛ history.json يحفظ السلاسل الزمنية.</p>'
-            '<table><tr><th>البيئة</th><th>طريقة التكاثر</th><th>العدد</th><th>مواليد مقبولون</th><th>وفيات الكوارث المباشرة</th><th>خطوة الانقراض</th></tr>'
+            '<p>في العزلة كل طريقة تملك مجتمعًا وموارد منفصلة؛ الميزانية الكلية أكبر من المنافسة. نفس البذرة تقرن المؤسسين والبيئة حيث ينطبق، ولا تجعل العوالم تكرارات مستقلة. الكارثة موحّدة الاحتمال والتوقيت، وقد تختلف الوفيات الفعلية.</p>'
+            '<h2>حالة العوالم</h2><table><tr><th>العالم</th><th>البداية</th><th>السعة</th><th>غذاء البداية</th><th>تجدد الغذاء</th><th>الأحياء</th><th>طرق باقية</th></tr>'
+            +''.join(totals)+'</table><h2>طرق التكاثر</h2><table><tr><th>البيئة</th><th>طريقة التكاثر</th><th>العدد</th><th>مواليد مقبولون</th><th>وفيات الكوارث المباشرة</th><th>تحديث الانقراض / الحالة</th><th>صمود مرصود · مليون سنة افتراضية</th></tr>'
             +''.join(rows)+'</table></html>')
         (folder/'REPORT.html').write_text(document, encoding='utf-8')
 
 
 def replay_session(path):
     manifest = json.loads(Path(path).read_text(encoding='utf-8'))
-    if manifest.get('schema') != 'interactive-1' or manifest.get('signature') != signature():
+    if manifest.get('schema') not in ('interactive-1', 'interactive-2') or manifest.get('signature') != signature():
         raise ValueError('Interactive replay source/runtime signature mismatch')
     session = LabSession(Path(path).parent/'unused_replay_output')
     session.configure(manifest['settings'], acknowledge_resources=True)
+    if manifest['schema'] == 'interactive-2':
+        layout = {name: {'environment': state.config.environment, 'initial_counts': list(state.config.initial_counts),
+                         'capacity': state.config.capacity, 'resources': {k: getattr(state.config,k) for k in ('initial_resources','resource_capacity','resource_renewal')}} for name,state in session.worlds.items()}
+        if layout != manifest.get('world_layout'):
+            raise ValueError('Interactive world layout mismatch')
     target = manifest['tick']
     if type(target) is not int or not 0 <= target <= session.settings.steps:
         raise ValueError('Invalid replay tick')

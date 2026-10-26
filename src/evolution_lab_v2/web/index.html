@@ -21,20 +21,30 @@
 </defs></svg>
 <header class="masthead">
   <a class="brand" href="/" aria-label="Evolution Lab"><span class="brand-mark"><svg><use href="#i-dna"/></svg></span><span>EVOLUTION<span class="brand-light"> LAB</span><small>INTERACTIVE OBSERVATORY</small></span></a>
-  <div class="header-right"><span class="local-pill"><i></i> محلي على جهازك</span><button class="icon-button" id="helpButton" aria-label="حول النموذج والزمن"><svg><use href="#i-info"/></svg></button><span class="version">v0.4</span></div>
+  <div class="header-right"><span class="local-pill"><i></i> محلي على جهازك</span><button class="icon-button" id="helpButton" aria-label="حول النموذج والزمن"><svg><use href="#i-info"/></svg></button><span class="version">v0.5</span></div>
 </header>
 <div class="app-shell">
 <aside class="sidebar">
   <section class="panel settings-panel">
     <div class="panel-title"><span class="eyebrow">EXPERIMENT DESIGN</span><h2>صمّم التجربة</h2></div>
+    <label class="field-label" for="comparisonMode">طريقة المقارنة</label>
+    <select id="comparisonMode"><option value="competition">منافسة مشتركة</option><option value="isolated">عوالم منفصلة لكل طريقة</option></select>
+    <p class="micro" id="comparisonHint">الطرق السبع تتشارك موارد البيئة.</p>
     <label class="field-label" for="duration">مدة السيناريو <span>مليون سنة افتراضية</span></label>
     <div class="duration-input"><input id="duration" type="number" min="1" step="1" value="100" inputmode="decimal"><span>Ma</span></div>
     <div class="presets" id="durationPresets"><button data-duration="10">10 M</button><button class="selected" data-duration="100">100 M</button><button data-duration="1000">1 B</button></div>
     <div class="range-label"><label for="steps">دقة الحساب</label><output id="stepsOutput">1,000 تحديث</output></div>
     <input id="steps" type="range" min="100" max="5000" step="100" value="1000">
     <p class="micro" id="resolutionHint">كل تحديث يعرض 0.1 مليون سنة من زمن السيناريو.</p>
-    <label class="field-label" for="capacity">السعة لكل بيئة</label>
+    <label class="field-label" for="capacity">السعة لكل عالم</label>
     <select id="capacity"><option value="168">168 فردًا · حمل أخف</option><option value="336" selected>336 فردًا · متوازن</option><option value="672">672 فردًا · حمل أعلى</option></select>
+    <label class="field-label" for="initialPopulation">عدد البداية لكل طريقة</label><input id="initialPopulation" type="number" min="1" max="48" step="1" value="32">
+    <details class="advanced"><summary>ميزانية الغذاء الموحّدة</summary>
+      <label class="field-label" for="resourceCapacity">سقف مخزون الغذاء لكل عالم</label><input id="resourceCapacity" type="number" min="1" max="100000" step="1" value="600">
+      <label class="field-label" for="initialResources">مخزون الغذاء عند البداية</label><input id="initialResources" type="number" min="0" max="100000" step="1" value="600">
+      <label class="field-label" for="resourceRenewal">تجدد الغذاء لكل تحديث</label><input id="resourceRenewal" type="number" min="0" max="100000" step="1" value="150">
+      <p class="micro">نفس الإعدادات لكل العوالم. المخزون الفعلي يتغيّر حسب الاستهلاك والموسم والكوارث.</p>
+    </details>
     <details class="advanced"><summary>الجينات والتكلفة والبذرة</summary>
       <label class="field-label" for="mutation">احتمال الطفرة لكل نسخة جينية</label><input id="mutation" type="number" min="0" max="0.02" step="0.001" value="0.001">
       <label class="field-label" for="matingCost">علاوة جهد التزاوج</label><select id="matingCost"><option value="0">0 · ضبط بلا علاوة</option><option value="0.2">0.2</option><option value="0.4">0.4</option></select>
@@ -83,6 +93,7 @@
     <div class="kpi machine"><span>موارد عملية المحاكاة</span><strong><b id="memoryValue">—</b><em>MB</em></strong><small><span class="tiny-dot"></span>CPU <b id="cpuValue">—</b> · نواة واحدة</small></div>
   </section>
   <div class="section-heading"><h2>مرصد البيئات</h2><span><i class="pulse-dot"></i>اضغط بيئة لمتابعتها، أو فردًا لفحص جيناته</span></div>
+  <div id="environmentTabs" class="environment-tabs" role="group" aria-label="اختيار البيئة في المقارنة المنفصلة" hidden></div>
   <section class="world-grid" id="worldGrid" aria-label="البيئات الحية"></section>
   <section class="panel chart-panel">
     <div class="chart-heading"><div><span class="eyebrow">POPULATION DYNAMICS</span><h2 id="chartTitle">تغيّر السكان · البيئة الثابتة</h2></div><div class="segmented" id="chartModes"><button class="selected" data-mode="population">السكان</button><button data-mode="resources">الموارد</button></div></div>
@@ -98,7 +109,7 @@
 </main>
 </div>
 <dialog id="resourceDialog" aria-labelledby="resourceTitle"><form method="dialog"><button class="dialog-close" aria-label="إغلاق">×</button></form><div class="dialog-icon"><svg><use href="#i-spark"/></svg></div><span class="eyebrow">BEFORE WE BEGIN</span><h2 id="resourceTitle">خلّينا نحسب الحمل أولًا.</h2><p>المحاكاة تستخدم المعالج والذاكرة، والعرض يستخدم موارد المتصفح. الدقة والسعة الأعلى تزيدان الحمل.</p><div class="estimate-grid" id="estimateGrid"></div><p class="dialog-mapping" id="mappingNotice"></p><label class="acknowledgement"><input id="resourceAck" type="checkbox">راجعت الإعدادات وفهمت أن التجربة ستستهلك موارد جهازي.</label><button class="button primary full" id="confirmStart" disabled><svg><use href="#i-play"/></svg>ابدأ المحاكاة</button></dialog>
-<dialog id="helpDialog" aria-labelledby="helpTitle"><form method="dialog"><button class="dialog-close" aria-label="إغلاق">×</button></form><span class="eyebrow">READ THE MODEL</span><h2 id="helpTitle">كيف تقرأ المختبر؟</h2><p>الأفراد والجينات والولادات والوفيات تُحسب فعليًا بمحرك Evolution Lab. مدة السيناريو تُوزّع على عدد التحديثات الذي تختاره؛ هذا مقياس عرض افتراضي يحتاج معايرة قبل اعتباره سنوات بيولوجية.</p><p>الكوارث لا تتداخل. يبدأ الفاصل البالغ 8 ملايين سنة بعد نهاية أثر الكارثة السابقة، ويُقرّب لأعلى بحسب دقة التحديث. الصدمة السكانية تقتل عند البداية؛ مدتها تمثل نافذة رصد الأثر. الجفاف يخفض الغذاء طوال المدة.</p><p>البيئات الثلاث حالات منفصلة دون هجرة. المساهمات من أربعة أو ثمانية آباء فرضية. هذه جلسة تفاعلية واحدة؛ لا تعطي وحدها ثقة إحصائية أو فائزًا عامًا.</p><p>يتم الحفظ تلقائيًا عند الانتهاء أو الإنهاء. زر التصدير يحفظ لقطة مع الجينات والسجلات والبذرة وتوقيت تدخلاتك. تتوقف المحاكاة مؤقتًا إذا انقطع اتصال الواجهة أكثر من 20 ثانية.</p></dialog>
+<dialog id="helpDialog" aria-labelledby="helpTitle"><form method="dialog"><button class="dialog-close" aria-label="إغلاق">×</button></form><span class="eyebrow">READ THE MODEL</span><h2 id="helpTitle">كيف تقرأ المختبر؟</h2><p>الأفراد والجينات والولادات والوفيات تُحسب فعليًا بمحرك Evolution Lab. مدة السيناريو تُوزّع على عدد التحديثات الذي تختاره؛ هذا مقياس عرض افتراضي يحتاج معايرة قبل اعتباره سنوات بيولوجية.</p><p>بالمنافسة تتشارك سبع طرق موارد كل بيئة. بالعزلة يوجد 7 عوالم لكل بيئة، أي 21 عالمًا؛ لكل طريقة نفس عدد البداية والسعة وميزانية الغذاء، دون تبادل موارد أو أفراد أو شركاء بين العوالم. الميزانية الكلية أكبر. اختر البيئة لعرض عوالمها السبعة. المؤسسون والبيئة مقترنون بالبذرة؛ ليست هذه تكرارات مستقلة.</p><p>الكوارث لا تتداخل. يبدأ الفاصل البالغ 8 ملايين سنة بعد نهاية أثر الكارثة السابقة، ويُقرّب لأعلى بحسب دقة التحديث. بالعزلة تطبّق كل كارثة على جميع العوالم بنفس الشدة والتوقيت؛ أعداد الضحايا قد تختلف. الصدمة السكانية تقتل عند البداية؛ مدتها تمثل نافذة رصد الأثر. الجفاف يخفض الغذاء طوال المدة.</p><p>المساهمات من أربعة أو ثمانية آباء فرضية. هذه جلسة تفاعلية واحدة؛ لا تعطي وحدها ثقة إحصائية أو فائزًا عامًا.</p><p>يتم الحفظ تلقائيًا عند الانتهاء أو الإنهاء. زر التصدير يحفظ لقطة مع الجينات والسجلات والبذرة وتوقيت تدخلاتك. تتوقف المحاكاة مؤقتًا إذا انقطع اتصال الواجهة أكثر من 20 ثانية.</p></dialog>
 <dialog id="individualDialog" aria-labelledby="individualTitle"><form method="dialog"><button class="dialog-close" aria-label="إغلاق">×</button></form><span class="eyebrow">INDIVIDUAL INSPECTOR</span><h2 id="individualTitle">فرد من المحاكاة</h2><div id="individualContent"></div></dialog>
 <dialog id="strategyDialog" aria-labelledby="strategyTitle"><form method="dialog"><button class="dialog-close" aria-label="إغلاق">×</button></form><span class="eyebrow">REPRODUCTIVE PROGRAM METRICS</span><h2 id="strategyTitle">تفاصيل المجتمع</h2><div id="strategyContent"></div></dialog>
 <div id="toast" role="status" aria-live="polite"></div>

@@ -8,7 +8,7 @@ This release publishes source code, tests, configurations and methods. Generated
 
 ## Live graphical laboratory
 
-Version 0.4 adds an Arabic local dashboard with three live environment panels, population/resource charts, actual individual/genome inspection, detailed strategy metrics, pause/resume/speed controls and manual catastrophes.
+Version 0.5 adds a choice between shared competition and isolated worlds. Isolation gives each of seven programs its own population/food/capacity in each environment (21 worlds), with common configurable founding counts and budgets, paired initial conditions, globally synchronized manual catastrophes and per-environment live comparisons. Shared competition preserves the previous behavior. The Arabic dashboard includes population/resource charts, actual individual/genome inspection, detailed strategy metrics, pause/resume/speed controls and local exports. Isolation uses more total resources and asks a different persistence question. GUI ledger-memory guards can reduce available actual updates; the estimate dialog displays the work before acknowledgement.
 
 The community table includes exact extinction updates and mapped scenario times, with ongoing/censored observations for surviving strategies. A separate survival CSV export covers all environments. Frontend survival-contract checks run with `node --test tests/gui_survival.test.cjs` when Node.js is available; Node is not needed to run the dashboard.
 

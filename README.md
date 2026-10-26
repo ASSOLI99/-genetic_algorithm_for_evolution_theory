@@ -24,6 +24,17 @@ The service binds only to `http://127.0.0.1:8765`. It needs no external frontend
 
 Normal completion/stop and manual export save a local HTML report, environment checkpoints/metrics/ledgers, history and an exact intervention journal in `runs/gui_*`, with a downloadable ZIP. `replay_session` in `gui_session.py` reproduces the recorded biological state and RNG/resource fingerprints under the same source/runtime. Single adaptive interactive sessions are descriptive; they are not independent statistical replicates. See [GUI_PROTOCOL.md](GUI_PROTOCOL.md) for the full time, resource, model and replay contract. Full offspring parentage is disabled in live sessions to bound memory; genomes remain in checkpoints.
 
+## Audit survival accounting and competition
+
+The bounded diagnostic design in `SURVIVAL_AUDIT_PROTOCOL.md` checks the existing life cycle with neutral, compatibility, competition, crossover and isolated-population controls. It does not change engine parameters or calibrate them to a species. Freeze and inspect its 168-run plan, then execute/resume the same plan:
+
+```powershell
+.\.venv\Scripts\python.exe tools\audit_survival.py --output runs\my_survival_audit --plan-only
+.\.venv\Scripts\python.exe tools\audit_survival.py --output runs\my_survival_audit --resume
+```
+
+`SURVIVAL_SMALL_FOUNDERS_PROTOCOL.md` defines a separate equal-program-founder control after the primary audit; it retains the primary plan and enforces their combined workload guard. Invoke it from the checkout with `python -m tools.audit_survival_smallfounders --primary runs\my_survival_audit --output runs\my_smallfounders_audit`. Outputs, including plans, seeds, all outcomes, checkpoints, accounting checks and descriptive uncertainty, remain local under `runs/`. Independent age-survival, neutral-fecundity, census-lottery and persisted-ledger checks are included in the Python test suite.
+
 ## Run the prepared comparison
 
 Arabic instructions: `RUN_ME_AR.md`. The PowerShell launcher verifies pinned dependencies, runs the test suite, freezes the plan, runs/resumes the batch and opens a local HTML report with PNG/SVG figures.

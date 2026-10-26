@@ -1,0 +1,9 @@
+{
+  "schema": "survival-audit-1",
+  "seeds": [41001, 41002, 41003, 41004, 41005, 41006, 41007, 41008],
+  "steps": 800,
+  "capacity": 336,
+  "environments": ["static", "periodic", "autocorrelated"],
+  "analysis_seed": 7302102,
+  "cases": ["seven_default", "seven_neutral", "seven_neutral_pooled", "pair_default", "isolated_clone", "isolated_two_parent", "seven_no_crossover"]
+}

@@ -1,0 +1,24 @@
+name: release
+
+# Push a tag such as v0.2.0 to publish a ready-to-run zip on the Releases page.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build zip
+        run: |
+          mkdir -p dist
+          git archive --format=zip --prefix=Evolution-Lab/ -o "dist/Evolution-Lab-${GITHUB_REF_NAME}.zip" HEAD
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true

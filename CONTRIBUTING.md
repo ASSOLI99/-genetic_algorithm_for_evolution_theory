@@ -35,7 +35,7 @@ Open a pull request with a short description of *what* changed and *why*. Arabic
 The downloadable zip in `release/` is built from the committed source with `git archive`, so it never contains `.venv`, `runs/` or other local files:
 
 ```bash
-git archive --format=zip --prefix=Evolution-Lab/ -o release/Evolution-Lab-v0.2.0.zip HEAD
+git archive --format=zip --prefix=Evolution-Lab/ -o release/Evolution-Lab-v0.7.0.zip HEAD
 ```
 
-Pushing a tag such as `v0.2.1` also builds the zip automatically and attaches it to a GitHub Release (`.github/workflows/release.yml`).
+Pushing a tag such as `v0.7.1` also builds the zip automatically and attaches it to a GitHub Release (`.github/workflows/release.yml`).

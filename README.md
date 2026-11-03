@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/actions/workflows/tests.yml"><img src="https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
   <img src="https://img.shields.io/badge/python-3.13%2B-3776AB?logo=python&logoColor=white" alt="Python 3.13+">
-  <img src="https://img.shields.io/badge/tests-135%20passing-2ea44f" alt="135 tests">
+  <img src="https://img.shields.io/badge/tests-254%20passing-2ea44f" alt="254 tests">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-informational" alt="platforms">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT license"></a>
 </p>
@@ -22,7 +22,13 @@
 
 It drops seven reproduction strategies into the *same* small world — shared food, a changing environment, parasites, aging and death — and lets them compete. Then it shows you, with charts and honest uncertainty, who grew, who shrank and who went extinct. It even tests *invented* four- and eight-parent systems to ask "why two and not more?".
 
-Everything is reproducible: the same seed gives the same result, every run is saved with checkpoints, and 135 automated tests check the bookkeeping before any experiment starts.
+The heart of the project is a **live laboratory in your browser**: design the experiment, watch three worlds evolve in real time, launch catastrophes, remove competitors, inspect any individual's genome, and export everything — all running locally on your own machine.
+
+Everything is reproducible: the same seed gives the same result, every run is saved with checkpoints, and 254 automated tests check the bookkeeping.
+
+<p align="center">
+  <img src="docs/images/gui-dashboard.png" alt="The Evolution Lab live laboratory" width="100%">
+</p>
 
 ## ⬇️ Download and run in 2 minutes
 
@@ -32,7 +38,7 @@ Everything is reproducible: the same seed gives the same result, every run is sa
 
 | Option | How |
 |---|---|
-| 📦 **Ready-made zip** | [**Evolution-Lab-v0.2.0.zip**](https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/raw/main/release/Evolution-Lab-v0.2.0.zip) — then right-click → *Extract All* |
+| 📦 **Ready-made zip** | [**Evolution-Lab-v0.7.0.zip**](https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/raw/main/release/Evolution-Lab-v0.7.0.zip) — then right-click → *Extract All* |
 | 🟢 GitHub button | **Code → Download ZIP** at the top of this page |
 | 🧑‍💻 Git | `git clone https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory.git` |
 
@@ -43,22 +49,50 @@ Everything is reproducible: the same seed gives the same result, every run is sa
 | 🪟 **Windows** | Double-click **`START-WINDOWS.bat`** and press <kbd>Enter</kbd> |
 | 🍎 **macOS** / 🐧 **Linux** | Open a terminal in the folder and run `./start.sh` |
 
-That's it. The first run creates a private environment (`.venv`), installs the exact library versions, runs the test suite, runs the experiment and **opens a report in your browser**. Nothing is installed system-wide. Results are saved in the `runs/` folder.
+That's it. The first run creates a private environment (`.venv`) and installs the exact library versions (a few minutes, once). Then **the live laboratory opens in your browser** at `http://127.0.0.1:8765`. Keep the launcher window open while you use it; close it to stop. Nothing is installed system-wide, nothing is sent anywhere, and results are saved in the `runs/` folder.
 
-<p align="center">
-  <img src="docs/images/terminal.png" alt="The launcher running the quick demo" width="85%">
-</p>
-
-### Experiment profiles
+### Everything the launcher can do
 
 | Menu | `start.sh` argument | What it does | Size |
 |:---:|---|---|---|
-| **1** | `smoke` *(default)* | Quick demo — checks everything works | 4 scenarios × 2 replicates, ~1 min |
-| **2** | `standard` | The full prepared comparison | 144 scenarios × 8 replicates (1,152 runs), ~5–15 min |
-| **3** | `isolated` | Each strategy alone, same starting size | 42 scenarios × 8 replicates |
-| **4** | `invasion` | 8 "sometimes-sexual" mutants dropped among 216 clones | 4 scenarios × 16 replicates, 200 steps |
+| **1** | *(none)* or `gui` | 🖥️ **Live laboratory** — the graphical interface | you choose |
+| **2** | `smoke` | Quick batch demo — checks everything works, opens a report | 4 scenarios × 2 replicates, ~1 min |
+| **3** | `standard` | The full prepared comparison | 144 scenarios × 8 replicates (1,152 runs), ~10 min |
+| **4** | `isolated` | Each strategy alone, same starting size | 42 scenarios × 8 replicates |
+| **5** | `invasion` | 8 "sometimes-sexual" mutants dropped among 216 clones | 4 scenarios × 16 replicates, 200 steps |
+| **6** | `catastrophe` | Bottlenecks, droughts and both, vs. no disaster | 16 scenarios × 4 replicates, 400 steps |
 
-## 📸 Screenshots
+Batch profiles (2–6) run the test suite first and open a `REPORT.html` when done.
+
+## 🖥️ The live laboratory
+
+Design an experiment in the side panel, press **ابدأ تجربة جديدة** (start), and watch it unfold. The interface is in Arabic (RTL); every number comes from the real simulation engine, not an animation.
+
+| | |
+|---|---|
+| 🧪 **Design the experiment** | Shared competition (all strategies in each world) **or** isolated worlds (each strategy alone — 21 worlds); tick which of the 7 strategies take part; duration, resolution, capacity, starting population, food budget, mutation, mating costs, selection, compatibility, 4/8-parent inheritance rule, parasites and seed |
+| 🌍 **Three living environments** | Static, periodic and drifting worlds side by side, each with its own population, food stock and a live sample of individuals |
+| ⚡ **Catastrophes** | Population bottleneck, drought or both; choose target, mortality, food loss, duration and food renewal. One at a time, with a cooldown |
+| ✂️ **Remove a competitor** | Wipe out one strategy in one or all environments and see who takes its place — logged separately from natural extinction |
+| 📈 **Live charts** | Population or food over time, per environment, with intervention markers |
+| 🧬 **Inspect anything** | Click a dot to see that individual's strategy, age, performance and genome; click a strategy for 20+ metrics (births, failures to find mates, diversity, linkage, extinction time…) |
+| ⏯️ **Full control** | Pause, resume, stop, speed slider; a resource estimate before every run |
+| 💾 **Save & replay** | Export an HTML report, checkpoints, ledgers, survival table and an exact intervention journal as a ZIP; sessions can be replayed bit-for-bit |
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/gui-chart.png" alt="Live population chart"><br><sub><b>Live population chart.</b> The drop near 18 M is a catastrophe launched from the panel; afterwards the facultative mixers (yellow) take over this world.</sub></td>
+<td width="50%"><img src="docs/images/gui-table.png" alt="Community table and intervention log"><br><sub><b>Community table</b> with exact extinction times, plus the <b>intervention log</b>.</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/images/gui-disaster.png" alt="Catastrophe panel" width="60%"><br><sub><b>Catastrophe panel:</b> bottleneck, drought or combined.</sub></td>
+<td width="50%" align="center"><img src="docs/images/gui-individual.png" alt="Individual inspector" width="80%"><br><sub><b>Individual inspector:</b> click any dot to see its genome.</sub><br><br><img src="docs/images/gui-dialog.png" alt="Resource estimate" width="55%"><br><sub><b>Before each run</b> the lab shows the expected load.</sub></td>
+</tr>
+</table>
+
+> The scenario clock ("millions of years") is a display scale spread over the number of real updates you choose; it is not calibrated geological time. Full details: [`GUI_PROTOCOL.md`](GUI_PROTOCOL.md).
+
+## 📸 Batch reports
 
 <table>
 <tr>
@@ -157,7 +191,19 @@ python -m evolution_lab_v2 analyze --input runs/neutral_pilot --output runs/neut
 python -m evolution_lab_v2 benchmark --config configs/neutral_clone.json --sizes 100,500,1000 --generations 10 --repeats 3 --output reports/benchmark_reference.json
 # Integrity audit of the preserved original simulation
 python tools/audit_baseline.py
+# Live laboratory without the launcher (binds to 127.0.0.1 only)
+python -m evolution_lab_v2 gui --port 8765            # add --no-open to skip the browser
+# Plan a hypothetical calendar horizon without running it
+python -m evolution_lab_v2 plan-time --config configs/catastrophe_benchmark.json --years 100000000 --years-per-step 1 --replicates 8 --output reports/deep_time_plan.json
+# Survival-accounting audit (168 runs): freeze the plan, then run/resume it
+python tools/audit_survival.py --output runs/my_survival_audit --plan-only
+python tools/audit_survival.py --output runs/my_survival_audit --resume
+python -m tools.audit_survival_smallfounders --primary runs/my_survival_audit --output runs/my_smallfounders_audit
+# Frontend survival-contract checks (optional, needs Node.js)
+node --test tests/gui_survival.test.cjs
 ```
+
+The calendar mapping in `plan-time` is a user assumption that needs biological calibration; the planner reports workload and does not bypass the safety limits. The survival audit (`SURVIVAL_AUDIT_PROTOCOL.md`) checks the life cycle with neutral, compatibility, competition, crossover and isolated-population controls without changing engine parameters. Version 0.2 checkpoints require version 0.2 code; migration is not implicit.
 
 Output directories must be new. Resume requires the same config, code, protocol files and library versions — this is what makes results reproducible.
 
@@ -173,16 +219,21 @@ The repository ships source, tests, configs and methods. Generated runs, the his
 ```
 ├── START-WINDOWS.bat        one-click launcher (Windows)
 ├── start.sh                 one-click launcher (macOS / Linux)
-├── Start-Experiment.ps1     PowerShell launcher with resume support
+├── Start-GUI.ps1            PowerShell launcher for the live laboratory
+├── Start-Experiment.ps1     PowerShell launcher for batch experiments, with resume
 ├── configs/                 ready-made experiments (JSON)
 ├── src/evolution_lab_v2/
 │   ├── ecology.py           the demographic engine (7 strategies, food, parasites)
 │   ├── eco_genetics.py      2/4/8-parent inheritance rules
 │   ├── eco_experiment.py    batch plans, seeds, resume
 │   ├── eco_analysis.py      statistics, charts, HTML report
+│   ├── gui_server.py        local web server for the live laboratory
+│   ├── gui_session.py       live sessions: worlds, catastrophes, removals, replay
+│   ├── web/                 the laboratory's interface (HTML/CSS/JS, no external libraries)
+│   ├── planning.py          deep-time workload planner
 │   ├── model.py, genetics.py  fixed-size mathematical reference engine
 │   └── cli.py               command-line interface
-├── tests/                   135 automated tests
+├── tests/                   254 automated tests (+ a Node.js frontend check)
 ├── tools/                   baseline audit and evidence summaries
 └── evolution_lab_verified.py  original v0.1 simulation, byte-preserved
 ```
@@ -198,6 +249,9 @@ The repository ships source, tests, configs and methods. Generated runs, the his
 | [`LIMITATIONS.md`](LIMITATIONS.md) | What this model can **not** tell you |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Code structure and development gates |
 | [`MODEL_ASSUMPTIONS.md`](MODEL_ASSUMPTIONS.md) · [`EXPERIMENT_PROTOCOL.md`](EXPERIMENT_PROTOCOL.md) | The fixed-size reference engine |
+| [`GUI_PROTOCOL.md`](GUI_PROTOCOL.md) | The live laboratory: time scale, resources, model and replay contract |
+| [`DISTURBANCE_PROTOCOL.md`](DISTURBANCE_PROTOCOL.md) | Catastrophes and droughts |
+| [`SURVIVAL_AUDIT_PROTOCOL.md`](SURVIVAL_AUDIT_PROTOCOL.md) · [`SURVIVAL_SMALL_FOUNDERS_PROTOCOL.md`](SURVIVAL_SMALL_FOUNDERS_PROTOCOL.md) | Independent checks of survival and extinction accounting |
 | [`RUN_ME_AR.md`](RUN_ME_AR.md) | Detailed run guide in Arabic |
 
 ## ⚠️ Read before drawing conclusions

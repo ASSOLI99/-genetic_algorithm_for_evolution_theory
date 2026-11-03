@@ -24,7 +24,7 @@ if not defined PY (
     exit /b 1
 )
 
-rem --- Create the private environment the first time (PowerShell script reuses it) ---
+rem --- Create the private environment the first time (the PowerShell scripts reuse it) ---
 if not exist ".venv\Scripts\python.exe" (
     echo  First run: creating a private Python environment in .venv ...
     %PY% -m venv .venv
@@ -37,32 +37,48 @@ if not exist ".venv\Scripts\python.exe" (
 
 echo  Choose what to run:
 echo.
-echo    1^) Quick demo        - 4 scenarios x 2 replicates, about 1 minute  (recommended first)
-echo    2^) Full comparison   - 144 scenarios x 8 replicates, several minutes
-echo    3^) Isolated programs - each reproduction program alone
-echo    4^) Invasion test     - rare facultative mutants among clones
+echo    1^) Live laboratory    - graphical interface in your browser  (recommended)
+echo    2^) Quick demo report  - 4 scenarios x 2 replicates, about 1 minute
+echo    3^) Full comparison    - 144 scenarios x 8 replicates
+echo    4^) Isolated programs  - each reproduction program alone
+echo    5^) Invasion test      - rare facultative mutants among clones
+echo    6^) Catastrophes       - bottlenecks and droughts, 16 scenarios
 echo.
 set "CHOICE=1"
 set /p "CHOICE=  Your choice [1]: "
 
+if "%CHOICE%"=="1" goto gui
+
 set "PROFILE=smoke"
-if "%CHOICE%"=="2" set "PROFILE=standard"
-if "%CHOICE%"=="3" set "PROFILE=isolated"
-if "%CHOICE%"=="4" set "PROFILE=invasion"
+if "%CHOICE%"=="3" set "PROFILE=standard"
+if "%CHOICE%"=="4" set "PROFILE=isolated"
+if "%CHOICE%"=="5" set "PROFILE=invasion"
+if "%CHOICE%"=="6" set "PROFILE=catastrophe"
 
 echo.
 echo  Running profile: %PROFILE%
 echo  (dependencies are installed and tests run automatically before the experiment)
 echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Start-Experiment.ps1" -Profile %PROFILE%
-if errorlevel 1 (
-    echo.
-    echo  [!] The run stopped with an error. Read the message above.
-    pause
-    exit /b 1
-)
-
+if errorlevel 1 goto failed
 echo.
 echo  Done. The report REPORT.html was opened in your browser.
 echo  All results are saved in the "runs" folder.
 pause
+exit /b 0
+
+:gui
+echo.
+echo  Starting the live laboratory at http://127.0.0.1:8765
+echo  The first start installs the libraries (a few minutes). Your browser opens by itself.
+echo  Keep this window open while you use the laboratory. Close it (or press Ctrl+C) to stop.
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Start-GUI.ps1"
+if errorlevel 1 goto failed
+exit /b 0
+
+:failed
+echo.
+echo  [!] The run stopped with an error. Read the message above.
+pause
+exit /b 1

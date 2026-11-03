@@ -4,6 +4,10 @@ import math
 
 STRATEGIES = ("clone", "two_parent", "facultative", "periodic", "stress", "four_parent", "eight_parent")
 PARENTS = (1, 2, 2, 2, 2, 4, 8)
+MAX_RUN_CENSUS_TICKS = 2_000_000
+MAX_RUN_LOCUS_TICKS = 50_000_000
+MAX_BATCH_CENSUS_TICKS = 50_000_000
+MAX_BATCH_LOCUS_TICKS = 1_000_000_000
 
 
 @dataclass(frozen=True)
@@ -55,13 +59,19 @@ class EcoConfig:
     establishment_size: int = 48
     record_parentage: bool = True
     max_logged_births: int = 100000
+    catastrophe_regime: str = "none"
+    catastrophe_probability: float = 0.0
+    catastrophe_mortality: float = .5
+    catastrophe_resource_loss: float = .75
+    catastrophe_renewal_factor: float = .25
+    catastrophe_duration: int = 8
 
     def __post_init__(self):
         if self.model != "demographic":
             raise ValueError("Expected demographic model")
         for name in ("seed", "steps", "capacity", "maturity_age", "max_age", "senescence_age",
                      "period", "environment_period", "parasite_period", "log_every", "checkpoint_every",
-                     "establishment_size", "max_logged_births"):
+                     "establishment_size", "max_logged_births", "catastrophe_duration"):
             minimum = 0 if name in ("seed", "steps", "maturity_age", "senescence_age") else 1
             if type(getattr(self, name)) is not int or getattr(self, name) < minimum:
                 raise ValueError(f"{name} must be an integer >= {minimum}")
@@ -82,7 +92,9 @@ class EcoConfig:
         probabilities = ("initial_frequency", "survival_probability", "selection_coefficient", "dominance",
                          "mutation_rate", "recombination_rate", "encounter_probability", "facultative_probability",
                          "modifier_mutation_rate", "modifier_step", "stress_threshold", "environment_flip_rate",
-                         "seasonal_amplitude", "parasite_strength", "parasite_noise")
+                         "seasonal_amplitude", "parasite_strength", "parasite_noise",
+                         "catastrophe_probability", "catastrophe_mortality",
+                         "catastrophe_resource_loss", "catastrophe_renewal_factor")
         for name in probabilities:
             value = getattr(self, name)
             if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
@@ -98,7 +110,7 @@ class EcoConfig:
             raise ValueError("Resource capacity/offspring cost must be positive; initial resources <= capacity")
         if self.fecundity > 4 or self.capacity > 5000 or self.loci > 256:
             raise ValueError("Demographic pilot limits: fecundity <= 4, capacity <= 5000, loci <= 256")
-        if self.capacity * self.steps > 2_000_000 or self.capacity * max(1, self.steps) * self.loci > 50_000_000:
+        if self.capacity * self.steps > MAX_RUN_CENSUS_TICKS or self.capacity * max(1, self.steps) * self.loci > MAX_RUN_LOCUS_TICKS:
             raise ValueError("Demographic pilot workload exceeds individual/locus update limits")
         if self.max_logged_births > 250000:
             raise ValueError("max_logged_births must be <= 250000")
@@ -120,6 +132,8 @@ class EcoConfig:
                 raise ValueError("chromosome_partition requires equal chromosome lengths and chromosome count divisible by four")
         if self.environment not in ("static", "periodic", "autocorrelated") or self.parasite not in ("none", "fixed", "tracking"):
             raise ValueError("Unsupported environment or parasite regime")
+        if not isinstance(self.catastrophe_regime, str) or self.catastrophe_regime not in ("none", "bottleneck", "drought", "combined"):
+            raise ValueError("Unsupported catastrophe regime")
         for name in ("record_parentage", "facultative_fallback"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")

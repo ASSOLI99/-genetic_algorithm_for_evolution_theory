@@ -1,0 +1,22 @@
+{
+  "name": "catastrophe_exploratory_v03",
+  "master_seed": 2026102601,
+  "replicates": 4,
+  "base": {
+    "model": "demographic",
+    "steps": 400,
+    "checkpoint_every": 100,
+    "log_every": 10,
+    "record_parentage": false,
+    "catastrophe_probability": 0.02,
+    "catastrophe_mortality": 0.5,
+    "catastrophe_resource_loss": 0.75,
+    "catastrophe_renewal_factor": 0.25,
+    "catastrophe_duration": 8
+  },
+  "grid": {
+    "catastrophe_regime": ["none", "bottleneck", "drought", "combined"],
+    "mating_cost": [0.0, 0.2],
+    "environment": ["static", "autocorrelated"]
+  }
+}

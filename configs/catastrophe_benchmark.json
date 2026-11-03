@@ -1,0 +1,13 @@
+{
+  "model": "demographic",
+  "steps": 120,
+  "record_parentage": false,
+  "checkpoint_every": 100,
+  "log_every": 10,
+  "catastrophe_regime": "combined",
+  "catastrophe_probability": 0.02,
+  "catastrophe_mortality": 0.5,
+  "catastrophe_resource_loss": 0.75,
+  "catastrophe_renewal_factor": 0.25,
+  "catastrophe_duration": 8
+}

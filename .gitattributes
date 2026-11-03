@@ -13,3 +13,6 @@
 # Not shipped inside the downloadable zip.
 /release export-ignore
 /.github export-ignore
+
+# Downloaded zips (git archive / GitHub "Download ZIP") record their commit here.
+/.git_archival.txt export-subst

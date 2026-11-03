@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/actions/workflows/tests.yml"><img src="https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
   <img src="https://img.shields.io/badge/python-3.13%2B-3776AB?logo=python&logoColor=white" alt="Python 3.13+">
-  <img src="https://img.shields.io/badge/tests-133%20passing-2ea44f" alt="133 tests">
+  <img src="https://img.shields.io/badge/tests-135%20passing-2ea44f" alt="135 tests">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT license"></a>
 </p>
 
@@ -23,7 +23,7 @@
 
 البرنامج يحط سبع طرق تكاثر داخل **نفس العالم الصغير**: أكل مشترك ومحدود، بيئة تتغير، طفيليات، شيخوخة وموت. ويخليها تتنافس، وبعدها يعرض لك بالرسوم البيانية — ومع هوامش عدم اليقين بكل أمانة — مين زاد، ومين نقص، ومين انقرض. وكمان يجرّب أنظمة **مخترعة** بأربع وثمان آباء عشان يسأل: «ليش اثنين بالذات وليس أكثر؟».
 
-كل شي قابل للإعادة: نفس البذرة العشوائية تعطي نفس النتيجة، كل تشغيل ينحفظ مع نقاط استكمال، و133 اختبار آلي تتأكد من صحة الحسابات قبل ما تبدأ أي تجربة.
+كل شي قابل للإعادة: نفس البذرة العشوائية تعطي نفس النتيجة، كل تشغيل ينحفظ مع نقاط استكمال، و135 اختبار آلي تتأكد من صحة الحسابات قبل ما تبدأ أي تجربة.
 
 ## ⬇️ التحميل والتشغيل في دقيقتين
 

@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/actions/workflows/tests.yml"><img src="https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
   <img src="https://img.shields.io/badge/python-3.13%2B-3776AB?logo=python&logoColor=white" alt="Python 3.13+">
-  <img src="https://img.shields.io/badge/tests-133%20passing-2ea44f" alt="133 tests">
+  <img src="https://img.shields.io/badge/tests-135%20passing-2ea44f" alt="135 tests">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-informational" alt="platforms">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT license"></a>
 </p>
@@ -22,7 +22,7 @@
 
 It drops seven reproduction strategies into the *same* small world — shared food, a changing environment, parasites, aging and death — and lets them compete. Then it shows you, with charts and honest uncertainty, who grew, who shrank and who went extinct. It even tests *invented* four- and eight-parent systems to ask "why two and not more?".
 
-Everything is reproducible: the same seed gives the same result, every run is saved with checkpoints, and 133 automated tests check the bookkeeping before any experiment starts.
+Everything is reproducible: the same seed gives the same result, every run is saved with checkpoints, and 135 automated tests check the bookkeeping before any experiment starts.
 
 ## ⬇️ Download and run in 2 minutes
 
@@ -182,7 +182,7 @@ The repository ships source, tests, configs and methods. Generated runs, the his
 │   ├── eco_analysis.py      statistics, charts, HTML report
 │   ├── model.py, genetics.py  fixed-size mathematical reference engine
 │   └── cli.py               command-line interface
-├── tests/                   133 automated tests
+├── tests/                   135 automated tests
 ├── tools/                   baseline audit and evidence summaries
 └── evolution_lab_verified.py  original v0.1 simulation, byte-preserved
 ```

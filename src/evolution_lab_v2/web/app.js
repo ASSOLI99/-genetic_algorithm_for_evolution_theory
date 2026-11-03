@@ -92,8 +92,14 @@ async function api(path, body) {
   if (!response.ok) throw new Error(result.message || 'تعذر الاتصال بالمختبر.');
   return result;
 }
+const UNBOUNDED_CAPACITY=1000000000,MAX_UNBOUNDED_FOUNDERS=1000000;
+function unboundedCapacity(){return $('capacityUnbounded').checked;}
+function capacityValue(){return unboundedCapacity()?0:Math.max(1,Math.floor(Number($('capacity').value)||0));}
+// Food defaults scale with the ceiling; with no ceiling they keep the 336-individual baseline.
+function foodScaleCapacity(capacity){return capacity>0?capacity:336;}
+function capacityLabel(capacity){return capacity>=UNBOUNDED_CAPACITY||capacity===0?'∞':count.format(capacity);}
 function settings() {
-  return {duration_million_years:$('duration').value,steps:Number($('steps').value),capacity:Number($('capacity').value),
+  return {duration_million_years:$('duration').value,steps:Number($('steps').value),capacity:capacityValue(),
     comparison_mode:$('comparisonMode').value,initial_population:Number($('initialPopulation').value),
     competition_strategies:$('comparisonMode').value==='isolated'?PROGRAMS:checkedPrograms(),
     resource_capacity:Number($('resourceCapacity').value),initial_resources:Number($('initialResources').value),resource_renewal:Number($('resourceRenewal').value),
@@ -111,7 +117,7 @@ function renderSelectionControls(){
   $('startButton').disabled=Boolean(live)||(!separate&&!selected.length);
 }
 function restoreSessionSettings(values) {
-  const fields={duration:'duration_million_years',steps:'steps',capacity:'capacity',seed:'seed',mutation:'mutation_rate',
+  const fields={duration:'duration_million_years',steps:'steps',seed:'seed',mutation:'mutation_rate',
     matingCost:'mating_cost',partnerCost:'extra_parent_cost',recombination:'recombination_rate',selection:'selection_coefficient',
     compatibility:'compatibility_scope',inheritance:'multiparent_mechanism',parasite:'parasite',comparisonMode:'comparison_mode'};
   for(const [id,key] of Object.entries(fields)){
@@ -120,16 +126,18 @@ function restoreSessionSettings(values) {
     field.value=value;
   }
   if(values.comparison_mode!=='isolated')for(const box of document.querySelectorAll('[data-program-check]'))box.checked=activePrograms(values).includes(box.value);
+  $('capacityUnbounded').checked=Number(values.capacity)===0;
+  if(Number(values.capacity)>0)$('capacity').value=values.capacity;
   lastCapacity=Number(values.capacity);
-  $('initialPopulation').value=values.initial_population??Math.max(8,Math.floor(lastCapacity/21)*2);
-  $('resourceCapacity').value=values.resource_capacity??600*lastCapacity/336;
+  $('initialPopulation').value=values.initial_population??(lastCapacity>0?Math.max(8,Math.floor(lastCapacity/21)*2):32);
+  $('resourceCapacity').value=values.resource_capacity??600*foodScaleCapacity(lastCapacity)/336;
   $('initialResources').value=values.initial_resources??$('resourceCapacity').value;
-  $('resourceRenewal').value=values.resource_renewal??150*lastCapacity/336;
+  $('resourceRenewal').value=values.resource_renewal??150*foodScaleCapacity(lastCapacity)/336;
   updateSettingsHint();
 }
 function updateSettingsHint() {
   const separate=$('comparisonMode').value==='isolated',worlds=separate?21:3;
-  const max = Math.min(5000,Math.floor(2000000/Number($('capacity').value)),Math.floor(50000000/(Number($('capacity').value)*16)),Math.floor(250000/(worlds*7)));
+  const max = Math.min(5000,Math.floor(250000/(worlds*7)));
   $('steps').max = Math.floor(max/100)*100;
   if (Number($('steps').value)>Number($('steps').max)) $('steps').value=$('steps').max;
   $('stepsOutput').textContent = count.format($('steps').value)+' تحديث';
@@ -137,7 +145,13 @@ function updateSettingsHint() {
   if(Number($('duration').value)>=1&&Number($('disasterDuration').value)>Number($('duration').value))$('disasterDuration').value=$('duration').value;
   $('resolutionHint').textContent = 'كل تحديث يعرض '+fmt.format(resolution)+' مليون سنة افتراضية؛ الزمن غير معاير بيولوجيًا.';
   const selected=checkedPrograms();
-  const maxInitial=separate?Number($('capacity').value):Math.floor(Number($('capacity').value)/Math.max(1,selected.length));
+  const capacity=capacityValue(),unbounded=capacity===0;
+  const maxInitial=unbounded?MAX_UNBOUNDED_FOUNDERS:Math.max(1,separate?capacity:Math.floor(capacity/Math.max(1,selected.length)));
+  $('capacity').disabled=unbounded||Boolean(state&&['running','paused'].includes(state.status));
+  document.querySelectorAll('[data-capacity]').forEach(b=>b.classList.toggle('selected',unbounded?b.dataset.capacity==='0':b.dataset.capacity===String(capacity)));
+  const fed=Math.floor((Number($('resourceCapacity').value)+Number($('resourceRenewal').value))*5);
+  $('capacityHint').textContent=unbounded?'لا يوجد سقف للسكان: التكاثر مفتوح والغذاء وحده يحدّد العدد. الغذاء الحالي لا يكفي لأكثر من '+count.format(fed)+' فرد تقريبًا لكل عالم؛ ارفع ميزانية الغذاء لأعداد أكبر. مئات الآلاف تبطئ كل تحديث.':
+    'عند تجاوز '+count.format(capacity)+' فرد في عالم، قرعة عشوائية تقرر من يبقى.'+(capacity>20000?' سعة كبيرة: الحمل على الجهاز أعلى.':'');
   $('initialPopulation').max=maxInitial;
   if(Number($('initialPopulation').value)>maxInitial)$('initialPopulation').value=maxInitial;
   const initial=Number($('initialPopulation').value);
@@ -156,13 +170,22 @@ function updateSettingsHint() {
 }
 for (const id of ['duration','steps','initialPopulation']) $(id).addEventListener('input',updateSettingsHint);
 for(const box of document.querySelectorAll('[data-program-check]'))box.onchange=updateSettingsHint;
-$('capacity').addEventListener('input',()=>{
-  const capacity=Number($('capacity').value);
+function capacityChanged(){
+  const capacity=capacityValue(),oldFood=foodScaleCapacity(lastCapacity),newFood=foodScaleCapacity(capacity);
   for(const [id,factor] of [['resourceCapacity',600],['initialResources',600],['resourceRenewal',150]]){
-    if(Number($(id).value)===factor*lastCapacity/336)$(id).value=factor*capacity/336;
+    if(Number($(id).value)===factor*oldFood/336)$(id).value=factor*newFood/336;
   }
-  if(Number($('initialPopulation').value)===Math.max(8,Math.floor(lastCapacity/21)*2))$('initialPopulation').value=Math.max(8,Math.floor(capacity/21)*2);
+  const defaultInitial=c=>c>0?Math.max(8,Math.floor(c/21)*2):32;
+  if(Number($('initialPopulation').value)===defaultInitial(lastCapacity))$('initialPopulation').value=defaultInitial(capacity);
   lastCapacity=capacity;updateSettingsHint();
+}
+$('capacity').addEventListener('input',capacityChanged);
+$('capacityUnbounded').addEventListener('change',capacityChanged);
+['resourceCapacity','resourceRenewal'].forEach(id=>$(id).addEventListener('input',updateSettingsHint));
+document.querySelectorAll('[data-capacity]').forEach(b=>b.onclick=()=>{
+  if(b.dataset.capacity==='0')$('capacityUnbounded').checked=true;
+  else{$('capacityUnbounded').checked=false;$('capacity').value=b.dataset.capacity;}
+  capacityChanged();
 });
 $('comparisonMode').onchange=()=>{if($('comparisonMode').value==='isolated')$('compatibility').value='within_strategy';updateSettingsHint();};
 document.querySelectorAll('[data-duration]').forEach(b=>b.onclick=()=>{$('duration').value=b.dataset.duration;updateSettingsHint();});
@@ -180,7 +203,7 @@ $('startButton').onclick=async()=>{
     pendingSettings=settings();
     const estimate=await api('/api/estimate',pendingSettings);
     const items=[['مدة السيناريو',fmt.format(Number(pendingSettings.duration_million_years))+' M'],['تحديثات فعلية',count.format(estimate.actual_steps)],
-      ['العوالم',estimate.worlds],['طرق مشاركة',estimate.participating_strategy_count],['البداية لكل طريقة / عالم',estimate.initial_per_strategy],
+      ['العوالم',estimate.worlds],['السعة لكل عالم',estimate.unbounded?'∞ بلا سقف':count.format(pendingSettings.capacity)],['أقصى سكان متوقع / عالم',short.format(estimate.census_bound_per_world)],['طرق مشاركة',estimate.participating_strategy_count],['البداية لكل طريقة / عالم',estimate.initial_per_strategy],
       ['غذاء البداية لكل عالم',estimate.resource_budget_per_world.initial_resources],['تجدد الغذاء لكل عالم',estimate.resource_budget_per_world.resource_renewal],
       ['سقف التحديثات الفردية',short.format(estimate.upper_individual_updates)],['صفوف سجل السكان',short.format(estimate.retained_ledger_rows)],['الحمل الاسترشادي',estimate.load]];
     $('estimateGrid').innerHTML=items.map(([label,value])=>`<div class="estimate-item"><small>${label}</small><strong>${value}</strong></div>`).join('');
@@ -288,11 +311,12 @@ function render(){
   $('statusBadge').className='run-state '+state.status;
   $('statusBadge').innerHTML='<i></i>'+STATES[state.status];
   renderSelectionControls();
-  ['duration','steps','capacity','comparisonMode','initialPopulation','resourceCapacity','initialResources','resourceRenewal','mutation','matingCost','partnerCost','seed','recombination','selection','compatibility','inheritance','parasite'].forEach(id=>$(id).disabled=alive);
+  ['duration','steps','capacity','capacityUnbounded','comparisonMode','initialPopulation','resourceCapacity','initialResources','resourceRenewal','mutation','matingCost','partnerCost','seed','recombination','selection','compatibility','inheritance','parasite'].forEach(id=>$(id).disabled=alive);
   $('compatibility').disabled=alive||$('comparisonMode').value==='isolated';
   $('target').disabled=alive?isolated(state):$('comparisonMode').value==='isolated';
   if($('target').disabled)$('target').value='all';
-  document.querySelectorAll('[data-duration]').forEach(b=>b.disabled=alive);
+  document.querySelectorAll('[data-duration],[data-capacity]').forEach(b=>b.disabled=alive);
+  if(!alive)$('capacity').disabled=unboundedCapacity();
   $('pauseButton').disabled=$('stopButton').disabled=!alive;
   $('pauseButton').setAttribute('aria-label',state.status==='paused'?'متابعة':'إيقاف مؤقت');
   $('pauseButton').innerHTML=`<svg><use href="#i-${state.status==='paused'?'play':'pause'}"/></svg>`;
@@ -314,7 +338,7 @@ function render(){
     const world=worlds.find(w=>w.id===card.dataset.world);
     card.classList.toggle('selected',viewIsolated()?world?.strategy_index===activeProgram:card.dataset.world===focus);
     card.querySelector('[data-pop]').textContent=world?count.format(world.population):'—';
-    card.querySelector('[data-cap]').textContent=world?' / '+world.capacity:'';
+    card.querySelector('[data-cap]').textContent=world?' / '+capacityLabel(world.capacity):'';
     card.querySelector('[data-res]').textContent=world?fmt.format(world.resources):'—';
     const affected=Boolean(state.active&&(state.active.target==='all'||state.active.target===card.dataset.world));
     card.classList.toggle('affected',affected);card.classList.toggle('extinct',Boolean(world?.extinct));

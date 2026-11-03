@@ -15,7 +15,7 @@ import zipfile
 import numpy as np
 
 from .artifacts import provenance, signature, write_json
-from .eco_config import EcoConfig, STRATEGIES, MAX_BATCH_CENSUS_TICKS, MAX_BATCH_LOCUS_TICKS
+from .eco_config import EcoConfig, STRATEGIES, UNBOUNDED_CAPACITY, MAX_RUN_CENSUS_TICKS, MAX_RUN_LOCUS_TICKS
 from .eco_io import save_checkpoint, write_outputs
 from .ecology import initialize, observe, performance, state_digest, step
 
@@ -24,6 +24,9 @@ LABELS = ('لاجنسي', 'جنسي بأبوين', 'اختياري', 'دوري',
 COLORS = ('#63e6be', '#6ca7ff', '#ffd166', '#bd9bff', '#ff9b70', '#f58abb', '#54cfdb')
 COOLDOWN_YEARS = Decimal(8_000_000)
 MAX_GUI_LEDGER_ROWS = 250_000
+# Largest founding count per program when the census has no ceiling.
+MAX_UNBOUNDED_FOUNDERS = 1_000_000
+MAX_RESOURCE_BUDGET = 1_000_000_000
 
 
 class SessionError(ValueError):
@@ -84,8 +87,8 @@ class Settings:
         duration = decimal_value(cfg.duration_million_years, 'مدة السيناريو', Decimal(1))
         if type(cfg.steps) is not int or not 100 <= cfg.steps <= 5000:
             raise SessionError('work_limit', 'الدقة المتاحة من 100 إلى 5000 تحديث فعلي.')
-        if type(cfg.capacity) is not int or cfg.capacity not in (168, 336, 672):
-            raise SessionError('work_limit', 'اختر سعة 168 أو 336 أو 672 فردًا لكل بيئة.')
+        if type(cfg.capacity) is not int or not 0 <= cfg.capacity <= UNBOUNDED_CAPACITY:
+            raise SessionError('invalid_capacity', 'السعة لكل عالم عدد صحيح موجب، أو 0 لـ«بلا سقف».')
         if type(cfg.seed) is not int or not 0 <= cfg.seed <= 2**31-1:
             raise SessionError('invalid_seed', 'البذرة يجب أن تكون عددًا صحيحًا من 0 إلى 2147483647.')
         if cfg.comparison_mode not in ('competition', 'isolated'):
@@ -94,7 +97,12 @@ class Settings:
         if not isinstance(selected, (tuple, list)) or not selected or len(selected) > len(STRATEGIES) or any(type(s) is not str or s not in STRATEGIES for s in selected) or len(set(selected)) != len(selected):
             raise SessionError('invalid_strategies', 'اختر طريقة تكاثر واحدة على الأقل دون تكرار أو أسماء غير معروفة.')
         cfg = replace(cfg, competition_strategies=tuple(s for s in STRATEGIES if s in selected))
-        maximum_initial = cfg.capacity if cfg.comparison_mode == 'isolated' else cfg.capacity//len(cfg.active_strategies)
+        if cfg.unbounded:
+            maximum_initial = MAX_UNBOUNDED_FOUNDERS
+        else:
+            maximum_initial = cfg.capacity if cfg.comparison_mode == 'isolated' else cfg.capacity//len(cfg.active_strategies)
+        if maximum_initial < 1:
+            raise SessionError('invalid_capacity', 'السعة أصغر من عدد طرق التكاثر المختارة؛ زِد السعة أو قلّل الطرق.')
         if cfg.initial_population is not None and (type(cfg.initial_population) is not int or not 1 <= cfg.initial_population <= maximum_initial):
             raise SessionError('invalid_initial', f'عدد البداية لكل طريقة يجب أن يكون بين 1 و{maximum_initial}.')
         if cfg.comparison_mode == 'isolated' and cfg.compatibility_scope != 'within_strategy':
@@ -102,7 +110,7 @@ class Settings:
         for name in ('resource_capacity', 'initial_resources', 'resource_renewal'):
             value = getattr(cfg, name)
             if value is not None:
-                finite_number(value, 'الموارد', 0, 100000)
+                finite_number(value, 'الموارد', 0, MAX_RESOURCE_BUDGET)
         env = cfg.environments
         if not isinstance(env, (tuple, list)) or not env or len(env) > 3 or any(type(e) is not str or e not in ENVIRONMENTS for e in env) or len(set(env)) != len(env):
             raise SessionError('invalid_environments', 'اختر بيئة واحدة على الأقل دون تكرار.')
@@ -116,11 +124,8 @@ class Settings:
         try:
             cfg.configs()
         except ValueError as exc:
-            raise SessionError('work_limit', 'الحجم يتجاوز ميزانية المحرك؛ قلّل الدقة أو سعة البيئة.') from exc
+            raise SessionError('invalid_settings', 'الإعدادات غير متوافقة: '+str(exc)) from exc
         world_count = len(cfg.environments)*(7 if cfg.comparison_mode == 'isolated' else 1)
-        work = cfg.steps*cfg.capacity*world_count
-        if work > MAX_BATCH_CENSUS_TICKS or work*16 > MAX_BATCH_LOCUS_TICKS:
-            raise SessionError('work_limit', 'الحجم الكلي يتجاوز ميزانية المحرك.')
         if cfg.steps*world_count*7 > MAX_GUI_LEDGER_ROWS:
             raise SessionError('log_limit', 'سجل العوالم يتجاوز ميزانية الذاكرة؛ قلّل عدد التحديثات الفعلية.')
         return cfg
@@ -138,15 +143,40 @@ class Settings:
         return float(Decimal(self.duration_million_years)*tick/self.steps)
 
     @property
+    def unbounded(self):
+        """Capacity 0 means no census ceiling: food is the only limit on reproduction."""
+        return self.capacity == 0
+
+    @property
+    def engine_capacity(self):
+        return UNBOUNDED_CAPACITY if self.unbounded else self.capacity
+
+    @property
+    def lifts_pilot_limits(self):
+        """Only settings beyond the batch pilot limits lift them, so ordinary worlds keep identical configs."""
+        capacity, loci = self.engine_capacity, EcoConfig().loci
+        return capacity > 5000 or capacity*self.steps > MAX_RUN_CENSUS_TICKS or capacity*self.steps*loci > MAX_RUN_LOCUS_TICKS
+
+    @property
     def starting_count(self):
-        return self.initial_population if self.initial_population is not None else max(8, self.capacity//(7*3)*2)
+        if self.initial_population is not None:
+            return self.initial_population
+        return 32 if self.unbounded else max(8, self.capacity//(7*3)*2)
+
+    def census_bound(self):
+        """Largest census one world can hold: its ceiling, or what its food can maintain and fund."""
+        budget = self.resource_budget()
+        defaults = EcoConfig()
+        fed = int((budget['resource_capacity']+budget['resource_renewal'])*(1/defaults.maintenance_cost+1/defaults.offspring_resource_cost))
+        initial = self.starting_count*(7 if self.comparison_mode == 'isolated' else len(self.active_strategies))
+        return min(self.engine_capacity, max(fed, initial))
 
     @property
     def active_strategies(self):
         return STRATEGIES if self.comparison_mode == 'isolated' else self.competition_strategies
 
     def resource_budget(self):
-        scale = self.capacity/336
+        scale = 1 if self.unbounded else self.capacity/336
         cap = self.resource_capacity if self.resource_capacity is not None else 600*scale
         return {'resource_capacity': cap,
                 'initial_resources': self.initial_resources if self.initial_resources is not None else cap,
@@ -159,7 +189,7 @@ class Settings:
             for program in programs:
                 initial = tuple(self.starting_count if (program is None and name in self.active_strategies) or i == program else 0 for i, name in enumerate(STRATEGIES))
                 name = environment if program is None else environment+'__'+STRATEGIES[program]
-                result[name] = EcoConfig(seed=self.seed, steps=self.steps, capacity=self.capacity,
+                result[name] = EcoConfig(seed=self.seed, steps=self.steps, capacity=self.engine_capacity, enforce_pilot_limits=not self.lifts_pilot_limits,
                     initial_counts=initial, environment=environment, mutation_rate=self.mutation_rate,
                     mating_cost=self.mating_cost, extra_parent_cost=self.extra_parent_cost,
                     recombination_rate=self.recombination_rate, selection_coefficient=self.selection_coefficient,
@@ -174,8 +204,8 @@ class Settings:
 
     def estimate(self):
         configs = self.configs()
-        work = self.steps*self.capacity*len(configs)
-        return {'settings': self.to_dict(), 'actual_steps': self.steps, 'worlds': len(configs),
+        work = self.steps*self.census_bound()*len(configs)
+        return {'unbounded': self.unbounded, 'census_bound_per_world': self.census_bound(),'settings': self.to_dict(), 'actual_steps': self.steps, 'worlds': len(configs),
                 'initial_per_strategy': self.starting_count,
                 'active_strategies': list(self.active_strategies),
                 'participating_strategy_count': len(self.active_strategies),
@@ -186,7 +216,7 @@ class Settings:
                 'upper_individual_updates': work, 'upper_locus_updates': work*16,
                 'scenario_million_years_per_update': float(Decimal(self.duration_million_years)/self.steps),
                 'cooldown_steps': self.ticks_for_years(COOLDOWN_YEARS),
-                'load': 'مرتفع' if work > 4_000_000 or self.steps*len(configs)*7 > 150000 else 'متوسط' if work > 1_000_000 else 'خفيف',
+                'load': 'مرتفع جدًا' if work > 200_000_000 else 'مرتفع' if work > 4_000_000 or self.steps*len(configs)*7 > 150000 else 'متوسط' if work > 1_000_000 else 'خفيف',
                 'calendar_mapping': 'زمن سيناريو افتراضي، غير معاير على سنوات بيولوجية حقيقية.',
                 'resource_notice': 'المحاكاة تستخدم المعالج والذاكرة، والعرض يستهلك موارد المتصفح. زيادة الدقة والسكان ترفع الحمل. يمكنك الإيقاف المؤقت أو الإنهاء.'}
 
@@ -527,7 +557,7 @@ class LabSession:
             programs = [LABELS[i] for i, n in enumerate(config['initial_counts']) if n]
             label = environment+(' · '+programs[0] if len(programs) == 1 else '')
             totals.append('<tr>'+''.join(f'<td>{html.escape(str(v))}</td>' for v in
-                (label, sum(config['initial_counts']), config['capacity'], config['initial_resources'],
+                (label, sum(config['initial_counts']), 'بلا سقف' if config['capacity'] >= UNBOUNDED_CAPACITY else config['capacity'], config['initial_resources'],
                  config['resource_renewal'], summary['total_population'], sum(e['population']>0 for e in summary['strategies'].values())))+'</tr>')
             for label, strategy in zip(LABELS, STRATEGIES):
                 entry = summary['strategies'][strategy]

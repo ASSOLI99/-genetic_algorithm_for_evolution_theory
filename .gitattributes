@@ -4,3 +4,15 @@
 # Historical source integrity checks require the original bytes on every OS.
 /evolution_lab_verified.py -text
 /test_evolution_lab.py -text
+
+# Launchers must keep native line endings inside the release zip.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
+
+# Not shipped inside the downloadable zip.
+/release export-ignore
+/.github export-ignore
+
+# Downloaded zips (git archive / GitHub "Download ZIP") record their commit here.
+/.git_archival.txt export-subst

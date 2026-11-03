@@ -36,13 +36,30 @@ def signature():
             "dependencies": dependencies, "bit_generator": "PCG64", "source_sha256": source_hashes()}
 
 
+def archived_git_sha():
+    """Commit recorded by git archive / GitHub "Download ZIP" (export-subst), else None."""
+    try:
+        text = (ROOT / ".git_archival.txt").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        key, _, value = line.partition(":")
+        value = value.strip()
+        if key.strip() == "node" and value and "$Format" not in value:
+            return value
+    return None
+
+
 def provenance():
     def git(*args):
         r = subprocess.run(["git", "-C", str(ROOT), *args], text=True, capture_output=True, check=False)
         return r.stdout.strip() if r.returncode == 0 else None
+    archived = archived_git_sha()
     return {**signature(), "utc_timestamp": datetime.now(timezone.utc).isoformat(),
             "platform": platform.platform(), "python_executable": sys.executable,
-            "git_sha": git("rev-parse", "HEAD"), "git_status": git("status", "--porcelain"),
+            "git_sha": archived or git("rev-parse", "HEAD"),
+            "git_status": None if archived else git("status", "--porcelain"),
+            "source_origin": "archive" if archived else "git",
             "command": sys.argv}
 
 

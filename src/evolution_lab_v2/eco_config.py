@@ -8,6 +8,8 @@ MAX_RUN_CENSUS_TICKS = 2_000_000
 MAX_RUN_LOCUS_TICKS = 50_000_000
 MAX_BATCH_CENSUS_TICKS = 50_000_000
 MAX_BATCH_LOCUS_TICKS = 1_000_000_000
+# Census ceiling used by the interactive laboratory's "no ceiling" option: food is then the only limit.
+UNBOUNDED_CAPACITY = 1_000_000_000
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,9 @@ class EcoConfig:
     catastrophe_resource_loss: float = .75
     catastrophe_renewal_factor: float = .25
     catastrophe_duration: int = 8
+    # Batch experiments keep the pilot workload limits; the interactive laboratory may lift them
+    # because the user watches, pauses and stops the run live.
+    enforce_pilot_limits: bool = True
 
     def __post_init__(self):
         if self.model != "demographic":
@@ -108,9 +113,15 @@ class EcoConfig:
                 raise ValueError(f"{name} must be finite and nonnegative")
         if self.resource_capacity <= 0 or self.offspring_resource_cost <= 0 or self.initial_resources > self.resource_capacity:
             raise ValueError("Resource capacity/offspring cost must be positive; initial resources <= capacity")
-        if self.fecundity > 4 or self.capacity > 5000 or self.loci > 256:
-            raise ValueError("Demographic pilot limits: fecundity <= 4, capacity <= 5000, loci <= 256")
-        if self.capacity * self.steps > MAX_RUN_CENSUS_TICKS or self.capacity * max(1, self.steps) * self.loci > MAX_RUN_LOCUS_TICKS:
+        if type(self.enforce_pilot_limits) is not bool:
+            raise ValueError("enforce_pilot_limits must be boolean")
+        if self.fecundity > 4 or self.loci > 256:
+            raise ValueError("Demographic limits: fecundity <= 4, loci <= 256")
+        if self.capacity > UNBOUNDED_CAPACITY:
+            raise ValueError(f"capacity must be <= {UNBOUNDED_CAPACITY}")
+        if self.enforce_pilot_limits and self.capacity > 5000:
+            raise ValueError("Demographic pilot limits: capacity <= 5000")
+        if self.enforce_pilot_limits and (self.capacity * self.steps > MAX_RUN_CENSUS_TICKS or self.capacity * max(1, self.steps) * self.loci > MAX_RUN_LOCUS_TICKS):
             raise ValueError("Demographic pilot workload exceeds individual/locus update limits")
         if self.max_logged_births > 250000:
             raise ValueError("max_logged_births must be <= 250000")

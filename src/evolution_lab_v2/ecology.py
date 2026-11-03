@@ -250,7 +250,7 @@ def step(state, remove_programs=()):
     # Equal expected effort budget: mean opportunities * intended effort =
     # fecundity * performance. This is not a hard per-individual energy bound.
     opportunities = state.rngs["mating"].poisson(cfg.fecundity*scores[breeders]/cost)
-    if int(opportunities.sum()) > 50000:
+    if int(opportunities.sum()) > (50000 if cfg.enforce_pilot_limits else 50_000_000):
         raise ValueError("Attempt safety limit exceeded; no silent Poisson clipping")
     focal = np.repeat(breeders, opportunities)
     needed = np.repeat(required, opportunities)

@@ -21,7 +21,7 @@
 </defs></svg>
 <header class="masthead">
   <a class="brand" href="/" aria-label="Evolution Lab"><span class="brand-mark"><svg><use href="#i-dna"/></svg></span><span>EVOLUTION<span class="brand-light"> LAB</span><small>INTERACTIVE OBSERVATORY</small></span></a>
-  <div class="header-right"><span class="local-pill"><i></i> محلي على جهازك</span><button class="icon-button" id="helpButton" aria-label="حول النموذج والزمن"><svg><use href="#i-info"/></svg></button><span class="version">v0.7</span></div>
+  <div class="header-right"><span class="local-pill"><i></i> محلي على جهازك</span><button class="icon-button" id="helpButton" aria-label="حول النموذج والزمن"><svg><use href="#i-info"/></svg></button><span class="version">v0.8</span></div>
 </header>
 <div class="app-shell">
 <aside class="sidebar">
@@ -46,8 +46,11 @@
     <div class="range-label"><label for="steps">دقة الحساب</label><output id="stepsOutput">1,000 تحديث</output></div>
     <input id="steps" type="range" min="100" max="5000" step="100" value="1000">
     <p class="micro" id="resolutionHint">كل تحديث يعرض 0.1 مليون سنة من زمن السيناريو.</p>
-    <label class="field-label" for="capacity">السعة لكل عالم</label>
-    <select id="capacity"><option value="168">168 فردًا · حمل أخف</option><option value="336" selected>336 فردًا · متوازن</option><option value="672">672 فردًا · حمل أعلى</option></select>
+    <label class="field-label" for="capacity">السعة لكل عالم <span>أقصى عدد أفراد يعيشون معًا</span></label>
+    <div class="duration-input capacity-input"><input id="capacity" type="number" min="1" step="1" value="336" inputmode="numeric" aria-describedby="capacityHint"><span>أفراد</span></div>
+    <div class="presets" id="capacityPresets"><button type="button" data-capacity="168">168</button><button type="button" class="selected" data-capacity="336">336</button><button type="button" data-capacity="672">672</button><button type="button" data-capacity="5000">5K</button><button type="button" data-capacity="50000">50K</button><button type="button" data-capacity="0">∞</button></div>
+    <label class="unbounded-toggle"><input id="capacityUnbounded" type="checkbox"><span>بلا سقف — التكاثر مفتوح، والغذاء وحده يحدّد العدد</span></label>
+    <p class="micro" id="capacityHint" role="status"></p>
     <label class="field-label" for="initialPopulation">عدد البداية لكل طريقة</label><input id="initialPopulation" type="number" min="1" max="48" step="1" value="32">
     <details class="advanced"><summary>ميزانية الغذاء الموحّدة</summary>
       <label class="field-label" for="resourceCapacity">سقف مخزون الغذاء لكل عالم</label><input id="resourceCapacity" type="number" min="1" max="100000" step="1" value="600">

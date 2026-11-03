@@ -38,7 +38,7 @@ Everything is reproducible: the same seed gives the same result, every run is sa
 
 | Option | How |
 |---|---|
-| 📦 **Ready-made zip** | [**Evolution-Lab-v0.7.0.zip**](https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/raw/main/release/Evolution-Lab-v0.7.0.zip) — then right-click → *Extract All* |
+| 📦 **Ready-made zip** | [**Evolution-Lab-v0.8.0.zip**](https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory/raw/main/release/Evolution-Lab-v0.8.0.zip) — then right-click → *Extract All* |
 | 🟢 GitHub button | **Code → Download ZIP** at the top of this page |
 | 🧑‍💻 Git | `git clone https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory.git` |
 
@@ -70,7 +70,7 @@ Design an experiment in the side panel, press **ابدأ تجربة جديدة**
 
 | | |
 |---|---|
-| 🧪 **Design the experiment** | Shared competition (all strategies in each world) **or** isolated worlds (each strategy alone — 21 worlds); tick which of the 7 strategies take part; duration, resolution, capacity, starting population, food budget, mutation, mating costs, selection, compatibility, 4/8-parent inheritance rule, parasites and seed |
+| 🧪 **Design the experiment** | Shared competition (all strategies in each world) **or** isolated worlds (each strategy alone — 21 worlds); tick which of the 7 strategies take part; duration, resolution, **capacity per world — any number you type, or ∞ for no ceiling (then only food limits reproduction)**, starting population, food budget, mutation, mating costs, selection, compatibility, 4/8-parent inheritance rule, parasites and seed |
 | 🌍 **Three living environments** | Static, periodic and drifting worlds side by side, each with its own population, food stock and a live sample of individuals |
 | ⚡ **Catastrophes** | Population bottleneck, drought or both; choose target, mortality, food loss, duration and food renewal. One at a time, with a cooldown |
 | ✂️ **Remove a competitor** | Wipe out one strategy in one or all environments and see who takes its place — logged separately from natural extinction |

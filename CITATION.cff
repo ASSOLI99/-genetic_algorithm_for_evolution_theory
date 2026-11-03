@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use Evolution Lab in research or teaching, please cite it as below."
 title: "Evolution Lab: an auditable simulator comparing clonal, sexual and multi-parent reproduction"
-version: 0.7.0
+version: 0.8.0
 date-released: 2026-11-03
 license: MIT
 repository-code: "https://github.com/ASSOLI99/-genetic_algorithm_for_evolution_theory"

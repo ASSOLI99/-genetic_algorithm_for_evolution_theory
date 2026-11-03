@@ -36,8 +36,9 @@ def test_resource_acknowledgement_and_calendar_resolution(tmp_path):
     assert 'افتراضي' in second.estimate()['calendar_mapping']
 
 
-@pytest.mark.parametrize('data', [{'steps':100000000}, {'steps':True}, {'capacity':5000},
-    {'capacity':672,'steps':5000}, {'duration_million_years':'0.5'},
+@pytest.mark.parametrize('data', [{'steps':100000000}, {'steps':True}, {'capacity':-1},
+    {'capacity':True}, {'capacity':2_000_000_000}, {'capacity':3}, {'capacity':'336'},
+    {'resource_capacity':2e9}, {'duration_million_years':'0.5'},
     {'duration_million_years':'NaN'}, {'mutation_rate':.9}, {'seed':-1},
     {'environments':['static','static']}, {'speed':1000000}, {'secret':'unknown'}])
 def test_gui_rejects_invalid_or_unbounded_work(data):
@@ -358,3 +359,39 @@ def test_isolated_export_replay_and_report_risk_sets(tmp_path):
 def test_export_registry_ignores_traversal_and_wrong_prefix(tmp_path):
     (tmp_path/'.gui-export-index.json').write_text(json.dumps({'a'*32:'../secrets.zip','b'*32:'gui_20261026_120000_aaaaaaaa.zip'}))
     assert not LabSession(tmp_path).exports
+
+
+def test_capacity_is_free_and_zero_means_no_ceiling():
+    from evolution_lab_v2.eco_config import UNBOUNDED_CAPACITY
+    custom = Settings.parse({'capacity':20000,'steps':5000})
+    assert all(c.capacity == 20000 for c in custom.configs().values())
+    unbounded = Settings.parse({'capacity':0,'steps':200,'initial_population':500,
+                                'resource_capacity':50000,'initial_resources':50000,'resource_renewal':12500})
+    configs = unbounded.configs()
+    assert all(c.capacity == UNBOUNDED_CAPACITY and not c.enforce_pilot_limits for c in configs.values())
+    estimate = unbounded.estimate()
+    assert estimate['unbounded'] and estimate['census_bound_per_world'] == (50000+12500)*5
+    # Default founders and food do not explode with an infinite ceiling.
+    defaults = Settings.parse({'capacity':0})
+    assert defaults.starting_count == 32 and defaults.resource_budget()['resource_capacity'] == 600
+
+
+def test_unbounded_world_is_never_culled_by_capacity():
+    settings = Settings.parse({'capacity':0,'steps':100,'seed':7,'resource_capacity':20000,
+                               'initial_resources':20000,'resource_renewal':5000})
+    from evolution_lab_v2.ecology import initialize, step
+    state = initialize(settings.configs()['static'])
+    for _ in range(40):
+        step(state)
+    assert sum(state.cumulative['capacity_adult_deaths']) == 0
+    assert sum(state.cumulative['capacity_newborn_deaths']) == 0
+    assert len(state.strategy) > 1000
+
+
+def test_batch_configs_keep_pilot_limits():
+    from evolution_lab_v2.eco_config import EcoConfig
+    with pytest.raises(ValueError):
+        EcoConfig(capacity=6000)
+    with pytest.raises(ValueError):
+        EcoConfig(capacity=5000, steps=1000)
+    assert EcoConfig(capacity=6000, steps=1000, enforce_pilot_limits=False).capacity == 6000
